@@ -226,6 +226,7 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
           ));
         });
       }
+      _scheduleSave();
       setState(() {
         _shapeStart = null;
         _shapeCurrent = null;
