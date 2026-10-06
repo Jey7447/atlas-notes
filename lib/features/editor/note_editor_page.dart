@@ -35,6 +35,7 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
     bodyController = TextEditingController();
     titleController.addListener(_markDirty);
     bodyController.addListener(_markDirty);
+    unawaited(_ensureNote());
   }
 
   void _markDirty() {
