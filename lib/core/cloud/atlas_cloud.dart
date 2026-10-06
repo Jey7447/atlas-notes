@@ -3,22 +3,24 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 class AtlasCloud {
   AtlasCloud._();
 
-  static bool get configured =>
-      Supabase.instance.isInitialized;
+  static bool _initialized = false;
+
+  static bool get configured => _initialized;
 
   static SupabaseClient? get client =>
-      configured ? Supabase.instance.client : null;
+      _initialized ? Supabase.instance.client : null;
 
   static Future<void> initialize() async {
     const url = String.fromEnvironment('SUPABASE_URL');
-    const anonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
+    const publishableKey = String.fromEnvironment('SUPABASE_PUBLISHABLE_KEY');
 
-    if (url.isEmpty || anonKey.isEmpty) return;
+    if (url.isEmpty || publishableKey.isEmpty) return;
 
     await Supabase.initialize(
       url: url,
-      anonKey: anonKey,
+      publishableKey: publishableKey,
       debug: false,
     );
+    _initialized = true;
   }
 }
