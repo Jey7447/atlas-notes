@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../canvas/canvas_editor_page.dart';
+
 class NoteEditorPage extends StatefulWidget {
   const NoteEditorPage({super.key, this.initialTitle = 'Untitled note'});
 
