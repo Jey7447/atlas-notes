@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:pdfrx/pdfrx.dart';
 
 import 'core/cloud/atlas_cloud.dart';
 import 'data/local/atlas_local_store.dart';
@@ -9,9 +10,11 @@ import 'data/local/search_repository.dart';
 
 import 'features/canvas/canvas_editor_page.dart';
 import 'features/editor/note_editor_page.dart';
+import 'features/pdf/pdf_studio_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await pdfrxFlutterInitialize();
   await AtlasCloud.initialize();
   await AtlasLocalStore.instance.initialize();
   runApp(const AtlasNotesApp());
@@ -65,6 +68,7 @@ class _AtlasShellState extends State<AtlasShell> {
     NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home_rounded), label: 'Home'),
     NavigationDestination(icon: Icon(Icons.menu_book_outlined), selectedIcon: Icon(Icons.menu_book_rounded), label: 'Notebooks'),
     NavigationDestination(icon: Icon(Icons.search_rounded), label: 'Search'),
+    NavigationDestination(icon: Icon(Icons.picture_as_pdf_outlined), selectedIcon: Icon(Icons.picture_as_pdf_rounded), label: 'PDF'),
     NavigationDestination(icon: Icon(Icons.cloud_outlined), selectedIcon: Icon(Icons.cloud_rounded), label: 'Cloud'),
   ];
 
@@ -74,6 +78,7 @@ class _AtlasShellState extends State<AtlasShell> {
       HomePage(onNewNote: _createNote, onCanvas: _openCanvas),
       const NotebooksPage(),
       const SearchPage(),
+      const PdfStudioPage(),
       const CloudPage(),
     ];
 
@@ -99,6 +104,7 @@ class _AtlasShellState extends State<AtlasShell> {
                     NavigationRailDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home_rounded), label: Text('Home')),
                     NavigationRailDestination(icon: Icon(Icons.menu_book_outlined), selectedIcon: Icon(Icons.menu_book_rounded), label: Text('Notebooks')),
                     NavigationRailDestination(icon: Icon(Icons.search_rounded), label: Text('Search')),
+                    NavigationRailDestination(icon: Icon(Icons.picture_as_pdf_outlined), selectedIcon: Icon(Icons.picture_as_pdf_rounded), label: Text('PDF')),
                     NavigationRailDestination(icon: Icon(Icons.cloud_outlined), selectedIcon: Icon(Icons.cloud_rounded), label: Text('Cloud')),
                   ],
                 ),
