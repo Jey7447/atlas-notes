@@ -10,20 +10,31 @@ class AtlasNotesApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    const seed = Color(0xFF5B5BD6);
     return MaterialApp(
       title: 'Atlas Notes',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        colorSchemeSeed: const Color(0xFF4F46E5),
-        brightness: Brightness.light,
-      ),
-      darkTheme: ThemeData(
-        useMaterial3: true,
-        colorSchemeSeed: const Color(0xFF818CF8),
-        brightness: Brightness.dark,
-      ),
+      theme: _theme(seed, Brightness.light),
+      darkTheme: _theme(seed, Brightness.dark),
+      themeMode: ThemeMode.system,
       home: const AtlasShell(),
+    );
+  }
+
+  ThemeData _theme(Color seed, Brightness brightness) {
+    return ThemeData(
+      useMaterial3: true,
+      brightness: brightness,
+      colorSchemeSeed: seed,
+      scaffoldBackgroundColor: brightness == Brightness.light
+          ? const Color(0xFFF8F8FB)
+          : const Color(0xFF111113),
+      appBarTheme: const AppBarTheme(centerTitle: false),
+      cardTheme: CardThemeData(
+        elevation: 0,
+        margin: EdgeInsets.zero,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      ),
     );
   }
 }
@@ -41,21 +52,21 @@ class _AtlasShellState extends State<AtlasShell> {
   static const destinations = [
     NavigationDestination(
       icon: Icon(Icons.home_outlined),
-      selectedIcon: Icon(Icons.home),
+      selectedIcon: Icon(Icons.home_rounded),
       label: 'Home',
     ),
     NavigationDestination(
       icon: Icon(Icons.menu_book_outlined),
-      selectedIcon: Icon(Icons.menu_book),
+      selectedIcon: Icon(Icons.menu_book_rounded),
       label: 'Notebooks',
     ),
     NavigationDestination(
-      icon: Icon(Icons.search),
+      icon: Icon(Icons.search_rounded),
       label: 'Search',
     ),
     NavigationDestination(
       icon: Icon(Icons.cloud_outlined),
-      selectedIcon: Icon(Icons.cloud),
+      selectedIcon: Icon(Icons.cloud_rounded),
       label: 'Cloud',
     ),
   ];
@@ -63,86 +74,339 @@ class _AtlasShellState extends State<AtlasShell> {
   @override
   Widget build(BuildContext context) {
     final pages = [
-      const _PlaceholderPage(
-        title: 'Atlas Notes',
-        subtitle: 'Your cloud-first, offline-capable workspace.',
-        icon: Icons.auto_stories_outlined,
-      ),
-      const _PlaceholderPage(
-        title: 'Notebooks',
-        subtitle: 'Notes, pages, folders and templates will live here.',
-        icon: Icons.menu_book_outlined,
-      ),
-      const _PlaceholderPage(
-        title: 'Search',
-        subtitle: 'Fast deterministic search across your local index.',
-        icon: Icons.search,
-      ),
-      const _PlaceholderPage(
-        title: 'Cloud',
-        subtitle: 'Sync, sharing and collaboration will live here.',
-        icon: Icons.cloud_outlined,
-      ),
+      const HomePage(),
+      const NotebooksPage(),
+      const SearchPage(),
+      const CloudPage(),
     ];
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Atlas Notes'),
-        actions: [
-          IconButton(
-            tooltip: 'New note',
-            onPressed: () {},
-            icon: const Icon(Icons.add),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final tablet = constraints.maxWidth >= 760;
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text('Atlas Notes', style: TextStyle(fontWeight: FontWeight.w700)),
+            actions: [
+              IconButton(
+                tooltip: 'New note',
+                onPressed: _createNote,
+                icon: const Icon(Icons.add_rounded),
+              ),
+              const SizedBox(width: 8),
+            ],
           ),
-        ],
-      ),
-      body: IndexedStack(index: index, children: pages),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: index,
-        destinations: destinations,
-        onDestinationSelected: (value) => setState(() => index = value),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {},
-        icon: const Icon(Icons.edit),
-        label: const Text('New note'),
+          body: Row(
+            children: [
+              if (tablet)
+                NavigationRail(
+                  selectedIndex: index,
+                  onDestinationSelected: (value) => setState(() => index = value),
+                  labelType: NavigationRailLabelType.all,
+                  destinations: const [
+                    NavigationRailDestination(
+                      icon: Icon(Icons.home_outlined),
+                      selectedIcon: Icon(Icons.home_rounded),
+                      label: Text('Home'),
+                    ),
+                    NavigationRailDestination(
+                      icon: Icon(Icons.menu_book_outlined),
+                      selectedIcon: Icon(Icons.menu_book_rounded),
+                      label: Text('Notebooks'),
+                    ),
+                    NavigationRailDestination(
+                      icon: Icon(Icons.search_rounded),
+                      label: Text('Search'),
+                    ),
+                    NavigationRailDestination(
+                      icon: Icon(Icons.cloud_outlined),
+                      selectedIcon: Icon(Icons.cloud_rounded),
+                      label: Text('Cloud'),
+                    ),
+                  ],
+                ),
+              Expanded(child: IndexedStack(index: index, children: pages)),
+            ],
+          ),
+          bottomNavigationBar: tablet
+              ? null
+              : NavigationBar(
+                  selectedIndex: index,
+                  destinations: destinations,
+                  onDestinationSelected: (value) => setState(() => index = value),
+                ),
+          floatingActionButton: FloatingActionButton.extended(
+            onPressed: _createNote,
+            icon: const Icon(Icons.edit_rounded),
+            label: const Text('New note'),
+          ),
+        );
+      },
+    );
+  }
+
+  void _createNote() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Note editor is the next build step.')),
+    );
+  }
+}
+
+class HomePage extends StatelessWidget {
+  const HomePage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return _PageFrame(
+      title: 'Good to have you back.',
+      subtitle: 'Everything you write stays available offline and will sync when cloud is connected.',
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: _ActionCard(
+                icon: Icons.edit_note_rounded,
+                title: 'Quick Capture',
+                subtitle: 'Start writing immediately.',
+                onTap: () {},
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _ActionCard(
+                icon: Icons.draw_rounded,
+                title: 'Canvas',
+                subtitle: 'Open an infinite canvas.',
+                onTap: () {},
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 24),
+        Text('Recent', style: Theme.of(context).textTheme.titleLarge),
+        const SizedBox(height: 12),
+        const _EmptyState(
+          icon: Icons.history_rounded,
+          title: 'No notes yet',
+          subtitle: 'Your recently opened notes will appear here.',
+        ),
+      ],
+    );
+  }
+}
+
+class NotebooksPage extends StatelessWidget {
+  const NotebooksPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return _PageFrame(
+      title: 'Notebooks',
+      subtitle: 'Organize notes into notebooks and folders.',
+      children: [
+        _ActionCard(
+          icon: Icons.create_new_folder_outlined,
+          title: 'Create a notebook',
+          subtitle: 'Your first notebook can hold multiple pages and note types.',
+          onTap: () {},
+        ),
+        const SizedBox(height: 24),
+        const _EmptyState(
+          icon: Icons.menu_book_outlined,
+          title: 'No notebooks yet',
+          subtitle: 'Create one when the local database layer is connected.',
+        ),
+      ],
+    );
+  }
+}
+
+class SearchPage extends StatelessWidget {
+  const SearchPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return _PageFrame(
+      title: 'Search',
+      subtitle: 'Deterministic search across titles, text, tags, files and links.',
+      children: [
+        TextField(
+          decoration: InputDecoration(
+            hintText: 'Search notes…',
+            prefixIcon: const Icon(Icons.search_rounded),
+            filled: true,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: BorderSide.none,
+            ),
+          ),
+        ),
+        const SizedBox(height: 24),
+        const _EmptyState(
+          icon: Icons.manage_search_rounded,
+          title: 'Nothing to search yet',
+          subtitle: 'Search will use the local index and never require AI.',
+        ),
+      ],
+    );
+  }
+}
+
+class CloudPage extends StatelessWidget {
+  const CloudPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return _PageFrame(
+      title: 'Cloud',
+      subtitle: 'Sync and backup will connect here once the Supabase project is available.',
+      children: [
+        _StatusCard(
+          icon: Icons.cloud_off_rounded,
+          title: 'Cloud not connected',
+          body: 'Atlas Notes is being built local-first. Your notes will remain usable without a connection.',
+        ),
+        const SizedBox(height: 12),
+        _StatusCard(
+          icon: Icons.security_rounded,
+          title: 'Private by design',
+          body: 'Authentication, row-level security, private storage and signed access will be added in the cloud layer.',
+        ),
+      ],
+    );
+  }
+}
+
+class _PageFrame extends StatelessWidget {
+  const _PageFrame({
+    required this.title,
+    required this.subtitle,
+    required this.children,
+  });
+
+  final String title;
+  final String subtitle;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1100),
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(24, 28, 24, 120),
+            children: [
+              Text(title, style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+              Text(subtitle, style: Theme.of(context).textTheme.bodyLarge),
+              const SizedBox(height: 28),
+              ...children,
+            ],
+          ),
+        ),
       ),
     );
   }
 }
 
-class _PlaceholderPage extends StatelessWidget {
-  const _PlaceholderPage({
+class _ActionCard extends StatelessWidget {
+  const _ActionCard({
+    required this.icon,
     required this.title,
     required this.subtitle,
-    required this.icon,
+    required this.onTap,
   });
 
+  final IconData icon;
   final String title;
   final String subtitle;
-  final IconData icon;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 640),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+    return Card(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Row(
             children: [
-              Icon(icon, size: 64, color: Theme.of(context).colorScheme.primary),
-              const SizedBox(height: 20),
-              Text(title, style: Theme.of(context).textTheme.headlineMedium),
-              const SizedBox(height: 8),
-              Text(
-                subtitle,
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodyLarge,
+              Icon(icon, size: 30, color: Theme.of(context).colorScheme.primary),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 4),
+                    Text(subtitle),
+                  ],
+                ),
               ),
+              const Icon(Icons.chevron_right_rounded),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _StatusCard extends StatelessWidget {
+  const _StatusCard({required this.icon, required this.title, required this.body});
+
+  final IconData icon;
+  final String title;
+  final String body;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, color: Theme.of(context).colorScheme.primary),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 6),
+                  Text(body),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyState extends StatelessWidget {
+  const _EmptyState({required this.icon, required this.title, required this.subtitle});
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          children: [
+            Icon(icon, size: 44, color: Theme.of(context).colorScheme.outline),
+            const SizedBox(height: 12),
+            Text(title, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 6),
+            Text(subtitle, textAlign: TextAlign.center),
+          ],
         ),
       ),
     );
