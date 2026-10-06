@@ -118,6 +118,72 @@ class _PdfStudioPageState extends State<PdfStudioPage> {
     }
   }
 
+  bool _drawingPointer(PointerDeviceKind kind) =>
+      kind == PointerDeviceKind.stylus ||
+      kind == PointerDeviceKind.invertedStylus ||
+      kind == PointerDeviceKind.mouse;
+
+  void _pointerDown(PointerDownEvent event, Size size) {
+    if (_tool == _PdfTool.select || !_drawingPointer(event.kind) || _pdfId == null || size.isEmpty) return;
+    final p = event.localPosition;
+    final point = _PdfInkPoint(
+      (p.dx / size.width).clamp(0.0, 1.0),
+      (p.dy / size.height).clamp(0.0, 1.0),
+      event.pressure.isFinite ? event.pressure.clamp(0.1, 1.0) : 1,
+    );
+    setState(() {
+      _activeInk = _PdfInk(
+        id: 'pdfann_${DateTime.now().microsecondsSinceEpoch}',
+        kind: _tool == _PdfTool.highlighter ? 'highlighter' : 'ink',
+        color: _tool == _PdfTool.highlighter ? Colors.yellow.value : Colors.blue.value,
+        width: 2.5,
+        opacity: _tool == _PdfTool.highlighter ? 0.32 : 1,
+        points: [point],
+      );
+    });
+  }
+
+  void _pointerMove(PointerMoveEvent event, Size size) {
+    final ink = _activeInk;
+    if (ink == null || !_drawingPointer(event.kind) || size.isEmpty) return;
+    final p = event.localPosition;
+    final point = _PdfInkPoint(
+      (p.dx / size.width).clamp(0.0, 1.0),
+      (p.dy / size.height).clamp(0.0, 1.0),
+      event.pressure.isFinite ? event.pressure.clamp(0.1, 1.0) : 1,
+    );
+    setState(() {
+      _activeInk = _PdfInk(
+        id: ink.id,
+        kind: ink.kind,
+        color: ink.color,
+        width: ink.width,
+        opacity: ink.opacity,
+        points: [...ink.points, point],
+      );
+    });
+  }
+
+  Future<void> _finishInk() async {
+    final ink = _activeInk;
+    if (ink == null) return;
+    setState(() {
+      _activeInk = null;
+      if (ink.points.length > 1) {
+        _annotationsByPage[_currentPage] = [...?_annotationsByPage[_currentPage], ink];
+      }
+    });
+    final id = _pdfId;
+    if (id == null || ink.points.length < 2) return;
+    await _repository.saveAnnotation(
+      pdfId: id,
+      pageNumber: _currentPage,
+      kind: ink.kind,
+      id: ink.id,
+      payload: ink.toPayload(),
+    );
+  }
+
   void _goToPage(int page) {
     final controller = _controller;
     if (controller == null || !controller.isReady) return;
@@ -137,6 +203,21 @@ class _PdfStudioPageState extends State<PdfStudioPage> {
               '$_currentPage / $_pageCount',
               style: Theme.of(context).textTheme.labelLarge,
             ),
+          IconButton(
+            tooltip: 'Pen',
+            onPressed: () => setState(() => _tool = _PdfTool.pen),
+            icon: const Icon(Icons.edit_outlined),
+          ),
+          IconButton(
+            tooltip: 'Highlighter',
+            onPressed: () => setState(() => _tool = _PdfTool.highlighter),
+            icon: const Icon(Icons.highlight_outlined),
+          ),
+          IconButton(
+            tooltip: 'Pan / select',
+            onPressed: () => setState(() => _tool = _PdfTool.select),
+            icon: const Icon(Icons.pan_tool_alt_outlined),
+          ),
           IconButton(
             tooltip: _showThumbnails ? 'Hide thumbnails' : 'Show thumbnails',
             onPressed: bytes == null
@@ -189,13 +270,38 @@ class _PdfStudioPageState extends State<PdfStudioPage> {
                     _documentRef!,
                     controller: _controller,
                     params: PdfViewerParams(
+                      panEnabled: _tool == _PdfTool.select,
                       onPageChanged: (pageNumber) {
-                        if (mounted) setState(() => _currentPage = pageNumber ?? 1);
+                        if (mounted) {
+                          final page = pageNumber ?? 1;
+                          setState(() => _currentPage = page);
+                          unawaited(_loadAnnotations(page));
+                        }
                       },
                       onDocumentChanged: (document) {
                         if (mounted) {
-                          setState(() => _pageCount = document?.pages.length ?? 0);
+                          final count = document?.pages.length ?? 0;
+                          setState(() => _pageCount = count);
+                          unawaited(_loadAllAnnotations(count));
+                          final id = _pdfId;
+                          if (id != null) unawaited(_repository.updatePageCount(id, count));
                         }
+                      },
+                      pageOverlaysBuilder: (context, pageRect, page) {
+                        final saved = _annotationsByPage[page.pageNumber] ?? const <_PdfInk>[];
+                        final active = page.pageNumber == _currentPage && _activeInk != null ? <_PdfInk>[_activeInk!] : const <_PdfInk>[];
+                        return [
+                          Positioned.fill(
+                            child: Listener(
+                              behavior: HitTestBehavior.translucent,
+                              onPointerDown: (e) => _pointerDown(e, pageRect.size),
+                              onPointerMove: (e) => _pointerMove(e, pageRect.size),
+                              onPointerUp: (_) => unawaited(_finishInk()),
+                              onPointerCancel: (_) => unawaited(_finishInk()),
+                              child: CustomPaint(painter: _PdfInkPainter(inks: [...saved, ...active])),
+                            ),
+                          ),
+                        ];
                       },
                     ),
                   ),
@@ -204,6 +310,85 @@ class _PdfStudioPageState extends State<PdfStudioPage> {
             ),
     );
   }
+}
+
+enum _PdfTool { select, pen, highlighter }
+
+class _PdfInkPoint {
+  const _PdfInkPoint(this.x, this.y, this.pressure);
+  final double x, y, pressure;
+  Map<String, dynamic> toJson() => {'x': x, 'y': y, 'pressure': pressure};
+  static _PdfInkPoint fromJson(Map<String, dynamic> j) => _PdfInkPoint(
+    (j['x'] as num?)?.toDouble() ?? 0,
+    (j['y'] as num?)?.toDouble() ?? 0,
+    (j['pressure'] as num?)?.toDouble() ?? 1,
+  );
+}
+
+class _PdfInk {
+  const _PdfInk({
+    required this.id,
+    required this.kind,
+    required this.color,
+    required this.width,
+    required this.opacity,
+    required this.points,
+  });
+  final String id, kind;
+  final int color;
+  final double width, opacity;
+  final List<_PdfInkPoint> points;
+
+  Map<String, dynamic> toPayload() => {
+    'color': color,
+    'width': width,
+    'opacity': opacity,
+    'points': points.map((p) => p.toJson()).toList(),
+  };
+
+  static _PdfInk fromRow(PdfAnnotation row) {
+    final json = Map<String, dynamic>.from(jsonDecode(row.payloadJson) as Map);
+    final raw = json['points'];
+    final points = raw is List
+        ? raw.whereType<Map>().map((p) => _PdfInkPoint.fromJson(Map<String, dynamic>.from(p))).toList()
+        : <_PdfInkPoint>[];
+    return _PdfInk(
+      id: row.id,
+      kind: row.kind,
+      color: (json['color'] as num?)?.toInt() ?? Colors.blue.value,
+      width: (json['width'] as num?)?.toDouble() ?? 2.5,
+      opacity: (json['opacity'] as num?)?.toDouble() ?? 1,
+      points: points,
+    );
+  }
+}
+
+class _PdfInkPainter extends CustomPainter {
+  const _PdfInkPainter({required this.inks});
+  final List<_PdfInk> inks;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    for (final ink in inks) {
+      if (ink.points.length < 2) continue;
+      final path = Path()
+        ..moveTo(ink.points.first.x * size.width, ink.points.first.y * size.height);
+      for (final point in ink.points.skip(1)) {
+        path.lineTo(point.x * size.width, point.y * size.height);
+      }
+      final paint = Paint()
+        ..color = Color(ink.color).withOpacity(ink.opacity)
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round
+        ..strokeWidth = ink.width;
+      if (ink.kind == 'highlighter') paint.blendMode = BlendMode.multiply;
+      canvas.drawPath(path, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _PdfInkPainter oldDelegate) => oldDelegate.inks != inks;
 }
 
 class _PdfThumbnails extends StatelessWidget {
