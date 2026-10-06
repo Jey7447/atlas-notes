@@ -1,17 +1,34 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import '../../core/models/canvas_document.dart';
+import '../../data/local/atlas_local_store.dart';
+import '../../data/local/canvas_repository.dart';
+import '../../data/local/note_repository.dart';
+import '../../data/local/notebook_repository.dart';
 
 class CanvasEditorPage extends StatefulWidget {
-  const CanvasEditorPage({super.key});
+  const CanvasEditorPage({super.key, this.noteId, this.pageId});
+
+  final String? noteId;
+  final String? pageId;
   @override
   State<CanvasEditorPage> createState() => _CanvasEditorPageState();
 }
 
 class _CanvasEditorPageState extends State<CanvasEditorPage> {
   CanvasDocument _document = const CanvasDocument();
+  late final CanvasRepository _repository;
+  late final NoteRepository _noteRepository;
+  late final NotebookRepository _notebookRepository;
+  String? _noteId;
+  String? _pageId;
+  int _pageIndex = 0;
+  bool _loading = true;
+  bool _saved = true;
+  Timer? _saveTimer;
   final List<CanvasDocument> _undo = [];
   final List<CanvasDocument> _redo = [];
   CanvasTool _tool = CanvasTool.pen;
@@ -21,6 +38,84 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
   CanvasStroke? _activeStroke;
   Offset? _shapeStart;
   Offset? _shapeCurrent;
+
+  @override
+  void initState() {
+    super.initState();
+    _repository = CanvasRepository(AtlasLocalStore.instance.db);
+    _noteRepository = NoteRepository(AtlasLocalStore.instance.db);
+    _notebookRepository = NotebookRepository(AtlasLocalStore.instance.db);
+    _noteId = widget.noteId;
+    _pageId = widget.pageId;
+    unawaited(_initializeDocument());
+  }
+
+  Future<void> _initializeDocument() async {
+    await AtlasLocalStore.instance.initialize();
+    if (_noteId == null) {
+      _noteId = await _noteRepository.createBlankNote(
+        workspaceId: AtlasLocalStore.defaultWorkspaceId,
+        title: 'Canvas',
+      );
+    }
+
+    if (_pageId == null) {
+      final page = await _notebookRepository.getFirstPage(_noteId!);
+      if (page != null) {
+        _pageId = page.id;
+        _pageIndex = page.pageIndex;
+      } else {
+        _pageId = await _notebookRepository.createPage(noteId: _noteId!);
+      }
+    }
+
+    final id = _pageId;
+    if (id != null) {
+      final document = await _repository.loadPageDocument(id);
+      if (document != null) _document = document;
+    }
+
+    if (mounted) {
+      setState(() {
+        _loading = false;
+        _saved = true;
+      });
+    }
+  }
+
+  void _scheduleSave() {
+    if (_loading || _pageId == null || _noteId == null) return;
+    _saveTimer?.cancel();
+    setState(() => _saved = false);
+    _saveTimer = Timer(const Duration(milliseconds: 400), _saveDocument);
+  }
+
+  Future<void> _saveDocument() async {
+    final pageId = _pageId;
+    final noteId = _noteId;
+    if (pageId == null || noteId == null) return;
+    await _repository.savePageDocument(
+      pageId: pageId,
+      noteId: noteId,
+      pageIndex: _pageIndex,
+      document: _document,
+    );
+    if (mounted) setState(() => _saved = true);
+  }
+
+  @override
+  void dispose() {
+    _saveTimer?.cancel();
+    if (!_loading && _pageId != null && _noteId != null) {
+      unawaited(_repository.savePageDocument(
+        pageId: _pageId!,
+        noteId: _noteId!,
+        pageIndex: _pageIndex,
+        document: _document,
+      ));
+    }
+    super.dispose();
+  }
 
   bool get _drawingTool =>
       _tool == CanvasTool.pen || _tool == CanvasTool.highlighter;
@@ -37,6 +132,7 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
       _redo.add(_document);
       _document = _undo.removeLast();
     });
+    _scheduleSave();
   }
 
   void _redoAction() {
@@ -45,6 +141,7 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
       _undo.add(_document);
       _document = _redo.removeLast();
     });
+    _scheduleSave();
   }
 
   Offset _canvasPosition(PointerEvent event) => event.localPosition / _zoom;
@@ -142,6 +239,7 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
       _document = _document.add(active);
       _activeStroke = null;
     });
+    _scheduleSave();
   }
 
   void _pointerCancel(PointerCancelEvent event) {
@@ -197,12 +295,14 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
     if (hit.id.isEmpty) return;
     _pushHistory();
     setState(() => _document = _document.remove(hit.id));
+    _scheduleSave();
   }
 
   void _clear() {
     if (_document.strokes.isEmpty) return;
     _pushHistory();
     setState(() => _document = _document.clear());
+    _scheduleSave();
   }
 
   Future<void> _showJson() async {
@@ -270,8 +370,18 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
     final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Canvas',
-            style: TextStyle(fontWeight: FontWeight.w700)),
+        title: Row(
+          children: [
+            const Text('Canvas', style: TextStyle(fontWeight: FontWeight.w700)),
+            if (!_loading) ...[
+              const SizedBox(width: 10),
+              Text(
+                _saved ? 'Saved' : 'Saving…',
+                style: Theme.of(context).textTheme.labelMedium,
+              ),
+            ],
+          ],
+        ),
         actions: [
           IconButton(
             tooltip: 'Undo',
