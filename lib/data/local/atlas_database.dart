@@ -108,6 +108,34 @@ class Assets extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+class PdfDocuments extends Table {
+  TextColumn get id => text()();
+  TextColumn get workspaceId => text()();
+  TextColumn get noteId => text().nullable()();
+  TextColumn get name => text()();
+  IntColumn get pageCount => integer().withDefault(const Constant(0))();
+  TextColumn get localPath => text().nullable()();
+  TextColumn get remotePath => text().nullable()();
+  TextColumn get createdAt => text()();
+  TextColumn get updatedAt => text()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+class PdfAnnotations extends Table {
+  TextColumn get id => text()();
+  TextColumn get pdfId => text()();
+  IntColumn get pageNumber => integer()();
+  TextColumn get kind => text()();
+  TextColumn get payloadJson => text()();
+  TextColumn get createdAt => text()();
+  TextColumn get updatedAt => text()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 class SyncQueue extends Table {
   IntColumn get sequence => integer().autoIncrement()();
   TextColumn get entityType => text()();
@@ -129,6 +157,8 @@ class SyncQueue extends Table {
     Tags,
     NoteTags,
     Assets,
+    PdfDocuments,
+    PdfAnnotations,
     SyncQueue,
   ],
 )
@@ -136,7 +166,18 @@ class AtlasDatabase extends _$AtlasDatabase {
   AtlasDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+        onCreate: (m) async => m.createAll(),
+        onUpgrade: (m, from, to) async {
+          if (from < 2) {
+            await m.createTable(pdfDocuments);
+            await m.createTable(pdfAnnotations);
+          }
+        },
+      );
 
   Future<List<Note>> recentNotes({int limit = 20}) {
     return (select(notes)
