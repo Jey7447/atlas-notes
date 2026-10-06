@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'core/cloud/atlas_cloud.dart';
 import 'data/local/atlas_local_store.dart';
 import 'data/local/note_repository.dart';
+import 'data/local/atlas_database.dart';
 
 import 'features/canvas/canvas_editor_page.dart';
 import 'features/editor/note_editor_page.dart';
@@ -158,7 +159,7 @@ class HomePage extends StatelessWidget {
         const SizedBox(height: 24),
         Text('Recent', style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 12),
-        StreamBuilder(
+        StreamBuilder<List<Note>>(
           stream: NoteRepository(AtlasLocalStore.instance.db).watchRecentNotes(),
           builder: (context, snapshot) {
             final notes = snapshot.data ?? const [];
