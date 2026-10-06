@@ -115,11 +115,80 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
     if (noteId == null) return;
     await _saveDocument();
     final id = await _notebookRepository.createPage(noteId: noteId);
-    final page = await (AtlasLocalStore.instance.db.select(AtlasLocalStore.instance.db.pages)
-          ..where((p) => p.id.equals(id)))
-        .getSingle();
-    if (!mounted) return;
+    final page = await _notebookRepository.getPage(id);
+    if (!mounted || page == null) return;
     await _switchPage(page);
+  }
+
+  Future<void> _duplicateCurrentPage() async {
+    final pageId = _pageId;
+    if (pageId == null) return;
+    await _saveDocument();
+    final id = await _notebookRepository.duplicatePage(pageId);
+    if (!mounted || id == null) return;
+    final page = await _notebookRepository.getPage(id);
+    if (page != null) await _switchPage(page);
+  }
+
+  Future<void> _deleteCurrentPage() async {
+    final noteId = _noteId;
+    final pageId = _pageId;
+    if (noteId == null || pageId == null) return;
+    final pages = await (AtlasLocalStore.instance.db.select(AtlasLocalStore.instance.db.pages)
+          ..where((p) => p.noteId.equals(noteId))
+          ..orderBy([(p) => OrderingTerm.asc(p.pageIndex)]))
+        .get();
+    if (pages.length <= 1) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('A note must keep at least one page.')),
+      );
+      return;
+    }
+    final deletedIndex = pages.indexWhere((page) => page.id == pageId);
+    await _saveDocument();
+    await _notebookRepository.deletePage(pageId);
+    final remaining = await (AtlasLocalStore.instance.db.select(AtlasLocalStore.instance.db.pages)
+          ..where((p) => p.noteId.equals(noteId))
+          ..orderBy([(p) => OrderingTerm.asc(p.pageIndex)]))
+        .get();
+    if (!mounted || remaining.isEmpty) return;
+    final nextIndex = deletedIndex.clamp(0, remaining.length - 1);
+    await _switchPage(remaining[nextIndex]);
+  }
+
+  Future<void> _moveCurrentPage(int direction) async {
+    final pageId = _pageId;
+    if (pageId == null) return;
+    await _saveDocument();
+    await _notebookRepository.movePage(pageId, direction);
+    final page = await _notebookRepository.getPage(pageId);
+    if (mounted && page != null) setState(() => _pageIndex = page.pageIndex);
+  }
+
+  Future<void> _showPageMenu() async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(leading: const Icon(Icons.copy_outlined), title: const Text('Duplicate page'), onTap: () => Navigator.pop(context, 'duplicate')),
+            ListTile(leading: const Icon(Icons.arrow_back_rounded), title: const Text('Move page left'), onTap: () => Navigator.pop(context, 'left')),
+            ListTile(leading: const Icon(Icons.arrow_forward_rounded), title: const Text('Move page right'), onTap: () => Navigator.pop(context, 'right')),
+            ListTile(leading: const Icon(Icons.delete_outline_rounded), title: const Text('Delete page'), onTap: () => Navigator.pop(context, 'delete')),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (!mounted) return;
+    switch (action) {
+      case 'duplicate': await _duplicateCurrentPage();
+      case 'left': await _moveCurrentPage(-1);
+      case 'right': await _moveCurrentPage(1);
+      case 'delete': await _deleteCurrentPage();
+    }
   }
 
   Future<void> _saveDocument() async {
@@ -541,10 +610,22 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
                       itemBuilder: (context, index) {
                         final page = pages[index];
                         final selected = page.id == _pageId;
-                        return ChoiceChip(
-                          selected: selected,
-                          label: Text('Page ${page.pageIndex + 1}'),
-                          onSelected: (_) => _switchPage(page),
+                        return Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            ChoiceChip(
+                              selected: selected,
+                              label: Text('Page ${page.pageIndex + 1}'),
+                              onSelected: (_) => _switchPage(page),
+                            ),
+                            if (selected)
+                              IconButton(
+                                tooltip: 'Page actions',
+                                visualDensity: VisualDensity.compact,
+                                onPressed: _showPageMenu,
+                                icon: const Icon(Icons.more_vert_rounded, size: 18),
+                              ),
+                          ],
                         );
                       },
                     ),
@@ -674,32 +755,20 @@ class _CanvasPainter extends CustomPainter {
 
   void _drawStroke(Canvas canvas, CanvasStroke stroke) {
     if (stroke.points.length < 2) return;
-    final paint = Paint()
-      ..color = stroke.color.withValues(alpha: stroke.opacity)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = stroke.width
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
-    if (stroke.highlighter) paint.blendMode = BlendMode.multiply;
-
-    final path = Path()..moveTo(stroke.points.first.x, stroke.points.first.y);
     for (var i = 1; i < stroke.points.length; i++) {
       final previous = stroke.points[i - 1];
       final current = stroke.points[i];
-      final midpoint = Offset(
-        (previous.x + current.x) / 2,
-        (previous.y + current.y) / 2,
-      );
-      path.quadraticBezierTo(
-        previous.x,
-        previous.y,
-        midpoint.dx,
-        midpoint.dy,
-      );
+      final pressure = ((previous.pressure + current.pressure) / 2).clamp(0.1, 1.0);
+      final pressureWidth = stroke.width * (0.55 + pressure * 0.9);
+      final paint = Paint()
+        ..color = stroke.color.withValues(alpha: stroke.opacity)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = pressureWidth
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round;
+      if (stroke.highlighter) paint.blendMode = BlendMode.multiply;
+      canvas.drawLine(previous.offset, current.offset, paint);
     }
-    final last = stroke.points.last;
-    path.lineTo(last.x, last.y);
-    canvas.drawPath(path, paint);
   }
 
   List<CanvasPoint> _previewPoints(
