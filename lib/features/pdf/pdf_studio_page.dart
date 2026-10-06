@@ -45,15 +45,50 @@ class _PdfStudioPageState extends State<PdfStudioPage> {
     if (bytes != null) unawaited(_openDocument(bytes, _name));
   }
 
-  Future<void> _registerDocument() async {
-    final name = _name;
-    final existing = await _repository.watchDocuments(AtlasLocalStore.defaultWorkspaceId).first;
-    final match = existing.where((d) => d.name == name).firstOrNull;
-    if (match != null) return;
-    await _repository.createDocument(
+  Future<void> _openDocument(Uint8List bytes, String name) async {
+    final id = await _ensureDocument(name);
+    if (!mounted) return;
+    setState(() {
+      _bytes = bytes;
+      _name = name;
+      _pdfId = id;
+      _currentPage = 1;
+      _pageCount = 0;
+      _annotationsByPage.clear();
+      _annotationLoads.clear();
+    });
+    _setDocument(bytes);
+  }
+
+  Future<String> _ensureDocument(String name) async {
+    final docs = await _repository.watchDocuments(AtlasLocalStore.defaultWorkspaceId).first;
+    final existing = docs.where((d) => d.name == name).firstOrNull;
+    return existing?.id ?? _repository.createDocument(
       workspaceId: AtlasLocalStore.defaultWorkspaceId,
       name: name,
     );
+  }
+
+  Future<void> _loadAnnotations(int pageNumber) {
+    final id = _pdfId;
+    if (id == null) return Future.value();
+    final pending = _annotationLoads[pageNumber];
+    if (pending != null) return pending;
+    final future = _repository.watchAnnotations(id, pageNumber).first.then((rows) {
+      if (!mounted) return;
+      final values = rows
+          .where((r) => r.kind == 'ink' || r.kind == 'highlighter')
+          .map(_PdfInk.fromRow)
+          .where((i) => i.points.length > 1)
+          .toList();
+      setState(() => _annotationsByPage[pageNumber] = values);
+    }).whenComplete(() => _annotationLoads.remove(pageNumber));
+    _annotationLoads[pageNumber] = future;
+    return future;
+  }
+
+  Future<void> _loadAllAnnotations(int count) async {
+    await Future.wait(List<int>.generate(count, (i) => i + 1).map(_loadAnnotations));
   }
 
   void _setDocument(Uint8List bytes) {
@@ -74,15 +109,7 @@ class _PdfStudioPageState extends State<PdfStudioPage> {
 
     try {
       final bytes = await file.readAsBytes();
-      if (!mounted) return;
-      setState(() {
-        _bytes = bytes;
-        _name = file.name;
-        _currentPage = 1;
-        _pageCount = 0;
-      });
-      _setDocument(bytes);
-      await _registerDocument();
+      await _openDocument(bytes, file.name);
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
