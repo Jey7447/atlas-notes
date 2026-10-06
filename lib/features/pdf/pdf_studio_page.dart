@@ -93,7 +93,7 @@ class _PdfStudioPageState extends State<PdfStudioPage> {
     final controller = _controller;
     if (controller == null || !controller.isReady) return;
     final target = page.clamp(1, _pageCount == 0 ? page : _pageCount);
-    controller.goToPage(target);
+    controller.goToPage(pageNumber: target);
   }
 
   @override
@@ -161,7 +161,7 @@ class _PdfStudioPageState extends State<PdfStudioPage> {
                     controller: _controller,
                     params: PdfViewerParams(
                       onPageChanged: (pageNumber) {
-                        if (mounted) setState(() => _currentPage = pageNumber);
+                        if (mounted) setState(() => _currentPage = pageNumber ?? 1);
                       },
                       onDocumentChanged: (document) {
                         if (mounted) {
