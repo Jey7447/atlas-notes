@@ -40,7 +40,8 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
   void _markDirty() {
     if (saved) setState(() => saved = false);
     _saveTimer?.cancel();
-    _saveTimer = Timer(const Duration(milliseconds: 350), _persist);
+    final generation = ++_saveGeneration;
+    _saveTimer = Timer(const Duration(milliseconds: 350), () => _persist(generation));
   }
 
   Future<void> _ensureNote() async {
@@ -54,7 +55,7 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
     );
   }
 
-  Future<void> _persist() async {
+  Future<void> _persist(int generation) async {
     await _ensureNote();
     final id = _noteId;
     if (id == null) return;
@@ -64,7 +65,6 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
       body: bodyController.text,
       pinned: pinned,
     );
-    final generation = ++_saveGeneration;
     if (mounted && generation == _saveGeneration) setState(() => saved = true);
   }
 
