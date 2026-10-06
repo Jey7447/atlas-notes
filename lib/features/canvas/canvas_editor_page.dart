@@ -35,6 +35,7 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
   Color _color = const Color(0xFF1F2430);
   double _width = 3;
   double _zoom = 1;
+  late final TransformationController _transformController;
   CanvasStroke? _activeStroke;
   Offset? _shapeStart;
   Offset? _shapeCurrent;
@@ -42,6 +43,7 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
   @override
   void initState() {
     super.initState();
+    _transformController = TransformationController();
     _repository = CanvasRepository(AtlasLocalStore.instance.db);
     _noteRepository = NoteRepository(AtlasLocalStore.instance.db);
     _notebookRepository = NotebookRepository(AtlasLocalStore.instance.db);
@@ -114,6 +116,7 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
         document: _document,
       ));
     }
+    _transformController.dispose();
     super.dispose();
   }
 
@@ -144,7 +147,7 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
     _scheduleSave();
   }
 
-  Offset _canvasPosition(PointerEvent event) => event.localPosition / _zoom;
+  Offset _canvasPosition(PointerEvent event) => _transformController.toScene(event.localPosition);
 
   void _pointerDown(PointerDownEvent event) {
     if (event.kind == PointerDeviceKind.touch && _drawingTool) return;
@@ -359,6 +362,15 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
     if (selected != null) setState(() => _color = selected);
   }
 
+  void _setZoom(double value) {
+    final next = value.clamp(0.5, 3.0).toDouble();
+    final scale = _transformController.value.getMaxScaleOnAxis();
+    if (scale == 0) return;
+    final factor = next / scale;
+    _transformController.value = _transformController.value.clone()..scale(factor);
+    setState(() => _zoom = next);
+  }
+
   void _selectTool(CanvasTool tool) => setState(() {
     _tool = tool;
     _activeStroke = null;
@@ -461,8 +473,7 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
                     tooltip: 'Zoom out',
                     onPressed: _zoom <= 0.5
                         ? null
-                        : () => setState(
-                            () => _zoom = (_zoom - 0.25).clamp(0.5, 3.0)),
+                        : () => _setZoom(_zoom - 0.25),
                     icon: const Icon(Icons.remove_rounded),
                   ),
                   Text('${(_zoom * 100).round()}%'),
@@ -470,8 +481,7 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
                     tooltip: 'Zoom in',
                     onPressed: _zoom >= 3
                         ? null
-                        : () => setState(
-                            () => _zoom = (_zoom + 0.25).clamp(0.5, 3.0)),
+                        : () => _setZoom(_zoom + 0.25),
                     icon: const Icon(Icons.add_rounded),
                   ),
                 ],
@@ -483,25 +493,35 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
               color: theme.brightness == Brightness.light
                   ? const Color(0xFFF0F1F5)
                   : const Color(0xFF191A1F),
-              child: ClipRect(
-                child: Transform.scale(
-                  scale: _zoom,
-                  alignment: Alignment.topLeft,
-                  child: Listener(
-                    behavior: HitTestBehavior.opaque,
-                    onPointerDown: _pointerDown,
-                    onPointerMove: _pointerMove,
-                    onPointerUp: _pointerUp,
-                    onPointerCancel: _pointerCancel,
-                    child: CustomPaint(
-                      size: const Size(2000, 1400),
-                      painter: _CanvasPainter(
-                        document: _document,
-                        activeStroke: _activeStroke,
-                        previewTool: _tool,
-                        previewStart: _shapeStart,
-                        previewCurrent: _shapeCurrent,
-                      ),
+              child: InteractiveViewer(
+                transformationController: _transformController,
+                constrained: false,
+                boundaryMargin: const EdgeInsets.all(1000),
+                minScale: 0.5,
+                maxScale: 3.0,
+                panEnabled: !_drawingTool,
+                scaleEnabled: true,
+                clipBehavior: Clip.none,
+                onInteractionUpdate: (_) {
+                  final scale = _transformController.value.getMaxScaleOnAxis();
+                  if (scale.isFinite && mounted && (scale - _zoom).abs() > 0.01) {
+                    setState(() => _zoom = scale.clamp(0.5, 3.0).toDouble());
+                  }
+                },
+                child: Listener(
+                  behavior: HitTestBehavior.opaque,
+                  onPointerDown: _pointerDown,
+                  onPointerMove: _pointerMove,
+                  onPointerUp: _pointerUp,
+                  onPointerCancel: _pointerCancel,
+                  child: CustomPaint(
+                    size: const Size(2000, 1400),
+                    painter: _CanvasPainter(
+                      document: _document,
+                      activeStroke: _activeStroke,
+                      previewTool: _tool,
+                      previewStart: _shapeStart,
+                      previewCurrent: _shapeCurrent,
                     ),
                   ),
                 ),
