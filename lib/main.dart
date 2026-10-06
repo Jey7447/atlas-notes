@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import 'features/canvas/canvas_editor_page.dart';
+import 'features/editor/note_editor_page.dart';
+
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(const AtlasNotesApp());
@@ -50,31 +53,16 @@ class _AtlasShellState extends State<AtlasShell> {
   int index = 0;
 
   static const destinations = [
-    NavigationDestination(
-      icon: Icon(Icons.home_outlined),
-      selectedIcon: Icon(Icons.home_rounded),
-      label: 'Home',
-    ),
-    NavigationDestination(
-      icon: Icon(Icons.menu_book_outlined),
-      selectedIcon: Icon(Icons.menu_book_rounded),
-      label: 'Notebooks',
-    ),
-    NavigationDestination(
-      icon: Icon(Icons.search_rounded),
-      label: 'Search',
-    ),
-    NavigationDestination(
-      icon: Icon(Icons.cloud_outlined),
-      selectedIcon: Icon(Icons.cloud_rounded),
-      label: 'Cloud',
-    ),
+    NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home_rounded), label: 'Home'),
+    NavigationDestination(icon: Icon(Icons.menu_book_outlined), selectedIcon: Icon(Icons.menu_book_rounded), label: 'Notebooks'),
+    NavigationDestination(icon: Icon(Icons.search_rounded), label: 'Search'),
+    NavigationDestination(icon: Icon(Icons.cloud_outlined), selectedIcon: Icon(Icons.cloud_rounded), label: 'Cloud'),
   ];
 
   @override
   Widget build(BuildContext context) {
     final pages = [
-      const HomePage(),
+      HomePage(onNewNote: _createNote, onCanvas: _openCanvas),
       const NotebooksPage(),
       const SearchPage(),
       const CloudPage(),
@@ -87,11 +75,7 @@ class _AtlasShellState extends State<AtlasShell> {
           appBar: AppBar(
             title: const Text('Atlas Notes', style: TextStyle(fontWeight: FontWeight.w700)),
             actions: [
-              IconButton(
-                tooltip: 'New note',
-                onPressed: _createNote,
-                icon: const Icon(Icons.add_rounded),
-              ),
+              IconButton(tooltip: 'New note', onPressed: _createNote, icon: const Icon(Icons.add_rounded)),
               const SizedBox(width: 8),
             ],
           ),
@@ -103,25 +87,10 @@ class _AtlasShellState extends State<AtlasShell> {
                   onDestinationSelected: (value) => setState(() => index = value),
                   labelType: NavigationRailLabelType.all,
                   destinations: const [
-                    NavigationRailDestination(
-                      icon: Icon(Icons.home_outlined),
-                      selectedIcon: Icon(Icons.home_rounded),
-                      label: Text('Home'),
-                    ),
-                    NavigationRailDestination(
-                      icon: Icon(Icons.menu_book_outlined),
-                      selectedIcon: Icon(Icons.menu_book_rounded),
-                      label: Text('Notebooks'),
-                    ),
-                    NavigationRailDestination(
-                      icon: Icon(Icons.search_rounded),
-                      label: Text('Search'),
-                    ),
-                    NavigationRailDestination(
-                      icon: Icon(Icons.cloud_outlined),
-                      selectedIcon: Icon(Icons.cloud_rounded),
-                      label: Text('Cloud'),
-                    ),
+                    NavigationRailDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home_rounded), label: Text('Home')),
+                    NavigationRailDestination(icon: Icon(Icons.menu_book_outlined), selectedIcon: Icon(Icons.menu_book_rounded), label: Text('Notebooks')),
+                    NavigationRailDestination(icon: Icon(Icons.search_rounded), label: Text('Search')),
+                    NavigationRailDestination(icon: Icon(Icons.cloud_outlined), selectedIcon: Icon(Icons.cloud_rounded), label: Text('Cloud')),
                   ],
                 ),
               Expanded(child: IndexedStack(index: index, children: pages)),
@@ -144,15 +113,24 @@ class _AtlasShellState extends State<AtlasShell> {
     );
   }
 
-  void _createNote() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Note editor is the next build step.')),
+  Future<void> _createNote() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const NoteEditorPage()),
+    );
+  }
+
+  Future<void> _openCanvas() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const CanvasEditorPage()),
     );
   }
 }
 
 class HomePage extends StatelessWidget {
-  const HomePage({super.key});
+  const HomePage({super.key, required this.onNewNote, required this.onCanvas});
+
+  final VoidCallback onNewNote;
+  final VoidCallback onCanvas;
 
   @override
   Widget build(BuildContext context) {
@@ -160,35 +138,21 @@ class HomePage extends StatelessWidget {
       title: 'Good to have you back.',
       subtitle: 'Everything you write stays available offline and will sync when cloud is connected.',
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: _ActionCard(
-                icon: Icons.edit_note_rounded,
-                title: 'Quick Capture',
-                subtitle: 'Start writing immediately.',
-                onTap: () {},
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _ActionCard(
-                icon: Icons.draw_rounded,
-                title: 'Canvas',
-                subtitle: 'Open an infinite canvas.',
-                onTap: () {},
-              ),
-            ),
-          ],
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final compact = constraints.maxWidth < 600;
+            final cards = [
+              _ActionCard(icon: Icons.edit_note_rounded, title: 'Quick Capture', subtitle: 'Start writing immediately.', onTap: onNewNote),
+              _ActionCard(icon: Icons.draw_rounded, title: 'Canvas', subtitle: 'Open an infinite canvas.', onTap: onCanvas),
+            ];
+            if (compact) return Column(children: [cards[0], const SizedBox(height: 12), cards[1]]);
+            return Row(children: [Expanded(child: cards[0]), const SizedBox(width: 12), Expanded(child: cards[1])]);
+          },
         ),
         const SizedBox(height: 24),
         Text('Recent', style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 12),
-        const _EmptyState(
-          icon: Icons.history_rounded,
-          title: 'No notes yet',
-          subtitle: 'Your recently opened notes will appear here.',
-        ),
+        const _EmptyState(icon: Icons.history_rounded, title: 'No notes yet', subtitle: 'Your recently opened notes will appear here.'),
       ],
     );
   }
@@ -210,11 +174,7 @@ class NotebooksPage extends StatelessWidget {
           onTap: () {},
         ),
         const SizedBox(height: 24),
-        const _EmptyState(
-          icon: Icons.menu_book_outlined,
-          title: 'No notebooks yet',
-          subtitle: 'Create one when the local database layer is connected.',
-        ),
+        const _EmptyState(icon: Icons.menu_book_outlined, title: 'No notebooks yet', subtitle: 'Create one when the local database layer is connected.'),
       ],
     );
   }
@@ -234,18 +194,11 @@ class SearchPage extends StatelessWidget {
             hintText: 'Search notes…',
             prefixIcon: const Icon(Icons.search_rounded),
             filled: true,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),
-              borderSide: BorderSide.none,
-            ),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
           ),
         ),
         const SizedBox(height: 24),
-        const _EmptyState(
-          icon: Icons.manage_search_rounded,
-          title: 'Nothing to search yet',
-          subtitle: 'Search will use the local index and never require AI.',
-        ),
+        const _EmptyState(icon: Icons.manage_search_rounded, title: 'Nothing to search yet', subtitle: 'Search will use the local index and never require AI.'),
       ],
     );
   }
@@ -260,28 +213,16 @@ class CloudPage extends StatelessWidget {
       title: 'Cloud',
       subtitle: 'Sync and backup will connect here once the Supabase project is available.',
       children: [
-        _StatusCard(
-          icon: Icons.cloud_off_rounded,
-          title: 'Cloud not connected',
-          body: 'Atlas Notes is being built local-first. Your notes will remain usable without a connection.',
-        ),
+        const _StatusCard(icon: Icons.cloud_off_rounded, title: 'Cloud not connected', body: 'Atlas Notes is being built local-first. Your notes will remain usable without a connection.'),
         const SizedBox(height: 12),
-        _StatusCard(
-          icon: Icons.security_rounded,
-          title: 'Private by design',
-          body: 'Authentication, row-level security, private storage and signed access will be added in the cloud layer.',
-        ),
+        const _StatusCard(icon: Icons.security_rounded, title: 'Private by design', body: 'Authentication, row-level security, private storage and signed access will be added in the cloud layer.'),
       ],
     );
   }
 }
 
 class _PageFrame extends StatelessWidget {
-  const _PageFrame({
-    required this.title,
-    required this.subtitle,
-    required this.children,
-  });
+  const _PageFrame({required this.title, required this.subtitle, required this.children});
 
   final String title;
   final String subtitle;
@@ -310,12 +251,7 @@ class _PageFrame extends StatelessWidget {
 }
 
 class _ActionCard extends StatelessWidget {
-  const _ActionCard({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-  });
+  const _ActionCard({required this.icon, required this.title, required this.subtitle, required this.onTap});
 
   final IconData icon;
   final String title;
