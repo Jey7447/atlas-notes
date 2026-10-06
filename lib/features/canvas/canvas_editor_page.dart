@@ -5,7 +5,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import '../../core/models/canvas_document.dart';
 import '../../data/local/atlas_local_store.dart';
-import 'package:drift/drift.dart';
+import 'package:drift/drift.dart' show OrderingTerm;
 import '../../data/local/atlas_database.dart' as atlas_db;
 import '../../data/local/canvas_repository.dart';
 import '../../data/local/note_repository.dart';
@@ -598,7 +598,7 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
             StreamBuilder<List<atlas_db.Page>>(
               stream: _notebookRepository.watchPages(_noteId!),
               builder: (context, snapshot) {
-                final pages = snapshot.data ?? const <Page>[];
+                final pages = snapshot.data ?? const <atlas_db.Page>[];
                 if (pages.isEmpty) return const SizedBox.shrink();
                 return Material(
                   color: theme.colorScheme.surfaceContainerLow,
