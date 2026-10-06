@@ -170,7 +170,7 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
     _pushHistory();
     setState(() {
       _activeStroke = CanvasStroke(
-        id: 'stroke_\${DateTime.now().microsecondsSinceEpoch}',
+        id: 'stroke_${DateTime.now().microsecondsSinceEpoch}',
         points: [
           CanvasPoint(point.dx, point.dy,
               pressure: event.pressure.clamp(0.1, 1.0)),
@@ -219,7 +219,7 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
       if (points.length >= 2) {
         setState(() {
           _document = _document.add(CanvasStroke(
-            id: 'stroke_\${DateTime.now().microsecondsSinceEpoch}',
+            id: 'stroke_${DateTime.now().microsecondsSinceEpoch}',
             points: points,
             color: _color,
             width: _width,
@@ -464,7 +464,7 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
                             () => _zoom = (_zoom - 0.25).clamp(0.5, 3.0)),
                     icon: const Icon(Icons.remove_rounded),
                   ),
-                  Text('\${(_zoom * 100).round()}%'),
+                  Text('${(_zoom * 100).round()}%'),
                   IconButton(
                     tooltip: 'Zoom in',
                     onPressed: _zoom >= 3
