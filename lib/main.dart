@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import 'core/cloud/atlas_cloud.dart';
+import 'data/local/atlas_local_store.dart';
+import 'data/local/note_repository.dart';
 
 import 'features/canvas/canvas_editor_page.dart';
 import 'features/editor/note_editor_page.dart';
@@ -8,6 +10,7 @@ import 'features/editor/note_editor_page.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await AtlasCloud.initialize();
+  await AtlasLocalStore.instance.initialize();
   runApp(const AtlasNotesApp());
 }
 
@@ -155,7 +158,42 @@ class HomePage extends StatelessWidget {
         const SizedBox(height: 24),
         Text('Recent', style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 12),
-        const _EmptyState(icon: Icons.history_rounded, title: 'No notes yet', subtitle: 'Your recently opened notes will appear here.'),
+        StreamBuilder(
+          stream: NoteRepository(AtlasLocalStore.instance.db).watchRecentNotes(),
+          builder: (context, snapshot) {
+            final notes = snapshot.data ?? const [];
+            if (notes.isEmpty) {
+              return const _EmptyState(
+                icon: Icons.history_rounded,
+                title: 'No notes yet',
+                subtitle: 'Your recently opened notes will appear here.',
+              );
+            }
+            return Column(
+              children: [
+                for (final note in notes)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Card(
+                      child: ListTile(
+                        leading: const Icon(Icons.description_outlined),
+                        title: Text(note.title),
+                        subtitle: Text(note.body.isEmpty ? 'No text yet' : note.body),
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => NoteEditorPage(
+                              noteId: note.id,
+                              initialTitle: note.title,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            );
+          },
+        ),
       ],
     );
   }
