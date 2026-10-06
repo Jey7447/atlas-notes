@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 
+import 'core/cloud/atlas_cloud.dart';
+
 import 'features/canvas/canvas_editor_page.dart';
 import 'features/editor/note_editor_page.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await AtlasCloud.initialize();
   runApp(const AtlasNotesApp());
 }
 
