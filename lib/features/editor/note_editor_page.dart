@@ -87,7 +87,7 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
             tooltip: pinned ? 'Unpin note' : 'Pin note',
             onPressed: () {
               setState(() => pinned = !pinned);
-              _persist();
+              _markDirty();
             },
             icon: Icon(pinned ? Icons.push_pin : Icons.push_pin_outlined),
           ),
