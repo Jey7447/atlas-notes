@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../canvas/canvas_editor_page.dart';
@@ -21,6 +23,8 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
   bool saved = true;
   late final NoteRepository repository;
   String? _noteId;
+  Timer? _saveTimer;
+  int _saveGeneration = 0;
 
   @override
   void initState() {
@@ -35,7 +39,8 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
 
   void _markDirty() {
     if (saved) setState(() => saved = false);
-    _persist();
+    _saveTimer?.cancel();
+    _saveTimer = Timer(const Duration(milliseconds: 350), _persist);
   }
 
   Future<void> _ensureNote() async {
@@ -59,11 +64,13 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
       body: bodyController.text,
       pinned: pinned,
     );
-    if (mounted) setState(() => saved = true);
+    final generation = ++_saveGeneration;
+    if (mounted && generation == _saveGeneration) setState(() => saved = true);
   }
 
   @override
   void dispose() {
+    _saveTimer?.cancel();
     titleController.dispose();
     bodyController.dispose();
     super.dispose();
