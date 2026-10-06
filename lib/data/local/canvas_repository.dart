@@ -19,16 +19,29 @@ class CanvasRepository {
     final now = DateTime.now().toUtc().toIso8601String();
     final json = jsonEncode(document.toJson());
 
-    await db.into(db.pages).insertOnConflictUpdate(
-      PagesCompanion.insert(
-        id: pageId,
-        noteId: noteId,
-        pageIndex: pageIndex,
-        contentJson: Value(json),
-        createdAt: now,
-        updatedAt: now,
-      ),
-    );
+    final existing = await (db.select(db.pages)
+          ..where((page) => page.id.equals(pageId)))
+        .getSingleOrNull();
+
+    if (existing == null) {
+      await db.into(db.pages).insert(
+        PagesCompanion.insert(
+          id: pageId,
+          noteId: noteId,
+          pageIndex: pageIndex,
+          contentJson: Value(json),
+          createdAt: now,
+          updatedAt: now,
+        ),
+      );
+    } else {
+      await (db.update(db.pages)..where((page) => page.id.equals(pageId))).write(
+        PagesCompanion(
+          contentJson: Value(json),
+          updatedAt: Value(now),
+        ),
+      );
+    }
 
     await db.into(db.syncQueue).insert(
       SyncQueueCompanion.insert(
