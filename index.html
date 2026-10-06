@@ -129,7 +129,7 @@ function layout(){
   </section>
   <main class="main">${renderMain()}</main>
   <button class="mobile-fab" onclick="createNote()" aria-label="New note">＋</button>
-  <nav class="bottom-nav"><button class="" onclick="go('home')"><span>⌂</span>Home</button><button onclick="toggleLibrary()"><span>▤</span>Notes</button><button onclick="quick()"><span>＋</span>Capture</button><button class="" onclick="go('canvas')"><span>⌁</span>Canvas</button><button onclick="toggleSidebar()"><span>☰</span>More</button></nav>
+  <nav class="bottom-nav"><button class="${view==="home"?"active":""}" onclick="go('home')"><span>⌂</span>Home</button><button onclick="toggleLibrary()"><span>▤</span>Notes</button><button onclick="quick()"><span>＋</span>Capture</button><button class="${view==="canvas"?"active":""}" onclick="go('canvas')"><span>⌁</span>Canvas</button><button onclick="toggleSidebar()"><span>☰</span>More</button></nav>
  </div>`;
  $("#search")?.addEventListener("input",e=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>{query=e.target.value;render()},100)});
 }
