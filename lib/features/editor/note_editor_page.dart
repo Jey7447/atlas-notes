@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 
 import '../canvas/canvas_editor_page.dart';
+import '../../data/local/atlas_local_store.dart';
+import '../../data/local/note_repository.dart';
 
 class NoteEditorPage extends StatefulWidget {
-  const NoteEditorPage({super.key, this.initialTitle = 'Untitled note'});
+  const NoteEditorPage({super.key, this.initialTitle = 'Untitled note', this.noteId});
 
   final String initialTitle;
+  final String? noteId;
 
   @override
   State<NoteEditorPage> createState() => _NoteEditorPageState();
@@ -16,10 +19,14 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
   late final TextEditingController bodyController;
   bool pinned = false;
   bool saved = true;
+  late final NoteRepository repository;
+  String? _noteId;
 
   @override
   void initState() {
     super.initState();
+    repository = NoteRepository(AtlasLocalStore.instance.db);
+    _noteId = widget.noteId;
     titleController = TextEditingController(text: widget.initialTitle);
     bodyController = TextEditingController();
     titleController.addListener(_markDirty);
@@ -28,6 +35,31 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
 
   void _markDirty() {
     if (saved) setState(() => saved = false);
+    _persist();
+  }
+
+  Future<void> _ensureNote() async {
+    if (_noteId != null) return;
+    await AtlasLocalStore.instance.initialize();
+    _noteId = await repository.createBlankNote(
+      workspaceId: AtlasLocalStore.defaultWorkspaceId,
+      title: titleController.text.trim().isEmpty
+          ? 'Untitled note'
+          : titleController.text.trim(),
+    );
+  }
+
+  Future<void> _persist() async {
+    await _ensureNote();
+    final id = _noteId;
+    if (id == null) return;
+    await repository.updateContent(
+      id,
+      title: titleController.text,
+      body: bodyController.text,
+      pinned: pinned,
+    );
+    if (mounted) setState(() => saved = true);
   }
 
   @override
@@ -46,7 +78,10 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
         actions: [
           IconButton(
             tooltip: pinned ? 'Unpin note' : 'Pin note',
-            onPressed: () => setState(() => pinned = !pinned),
+            onPressed: () {
+              setState(() => pinned = !pinned);
+              _persist();
+            },
             icon: Icon(pinned ? Icons.push_pin : Icons.push_pin_outlined),
           ),
           IconButton(
