@@ -25,7 +25,6 @@ class _PdfStudioPageState extends State<PdfStudioPage> {
   int _currentPage = 1;
   int _pageCount = 0;
   bool _showThumbnails = true;
-  String? _pdfId;
   PdfRepository get _repository => PdfRepository(AtlasLocalStore.instance.db);
 
   @override
@@ -43,12 +42,9 @@ class _PdfStudioPageState extends State<PdfStudioPage> {
   Future<void> _registerDocument() async {
     final name = _name;
     final existing = await _repository.watchDocuments(AtlasLocalStore.defaultWorkspaceId).first;
-    final match = existing.where((d) => d.name == name).cast<PdfDocument?>().firstOrNull;
-    if (match != null) {
-      _pdfId = match.id;
-      return;
-    }
-    _pdfId = await _repository.createDocument(
+    final match = existing.where((d) => d.name == name).firstOrNull;
+    if (match != null) return;
+    await _repository.createDocument(
       workspaceId: AtlasLocalStore.defaultWorkspaceId,
       name: name,
     );
