@@ -4,6 +4,9 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:pdfrx/pdfrx.dart';
 
+import '../../data/local/atlas_local_store.dart';
+import '../../data/local/pdf_repository.dart';
+
 class PdfStudioPage extends StatefulWidget {
   const PdfStudioPage({super.key, this.initialBytes, this.initialName});
 
@@ -22,6 +25,8 @@ class _PdfStudioPageState extends State<PdfStudioPage> {
   int _currentPage = 1;
   int _pageCount = 0;
   bool _showThumbnails = true;
+  String? _pdfId;
+  PdfRepository get _repository => PdfRepository(AtlasLocalStore.instance.db);
 
   @override
   void initState() {
@@ -29,7 +34,24 @@ class _PdfStudioPageState extends State<PdfStudioPage> {
     _bytes = widget.initialBytes;
     _name = widget.initialName ?? _name;
     final bytes = _bytes;
-    if (bytes != null) _setDocument(bytes);
+    if (bytes != null) {
+      _setDocument(bytes);
+      WidgetsBinding.instance.addPostFrameCallback((_) => _registerDocument());
+    }
+  }
+
+  Future<void> _registerDocument() async {
+    final name = _name;
+    final existing = await _repository.watchDocuments(AtlasLocalStore.defaultWorkspaceId).first;
+    final match = existing.where((d) => d.name == name).cast<PdfDocument?>().firstOrNull;
+    if (match != null) {
+      _pdfId = match.id;
+      return;
+    }
+    _pdfId = await _repository.createDocument(
+      workspaceId: AtlasLocalStore.defaultWorkspaceId,
+      name: name,
+    );
   }
 
   void _setDocument(Uint8List bytes) {
@@ -58,6 +80,7 @@ class _PdfStudioPageState extends State<PdfStudioPage> {
         _pageCount = 0;
       });
       _setDocument(bytes);
+      await _registerDocument();
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
