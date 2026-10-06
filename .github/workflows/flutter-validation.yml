@@ -7,7 +7,7 @@ on:
     branches: [atlas-2.0, main]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   validate:
@@ -27,13 +27,6 @@ jobs:
 
       - name: Generate Drift code
         run: dart run build_runner build --delete-conflicting-outputs
-
-      - name: Commit generated sources
-        if: github.event_name == 'push'
-        uses: stefanzweifel/git-auto-commit-action@v7
-        with:
-          commit_message: "chore: refresh generated Dart sources"
-          file_pattern: "lib/**/*.g.dart"
 
       - name: Analyze
         run: flutter analyze
