@@ -4,6 +4,7 @@ import 'core/cloud/atlas_cloud.dart';
 import 'data/local/atlas_local_store.dart';
 import 'data/local/note_repository.dart';
 import 'data/local/atlas_database.dart';
+import 'data/local/search_repository.dart';
 
 import 'features/canvas/canvas_editor_page.dart';
 import 'features/editor/note_editor_page.dart';
@@ -222,25 +223,94 @@ class NotebooksPage extends StatelessWidget {
   }
 }
 
-class SearchPage extends StatelessWidget {
+class SearchPage extends StatefulWidget {
   const SearchPage({super.key});
 
   @override
+  State<SearchPage> createState() => _SearchPageState();
+}
+
+class _SearchPageState extends State<SearchPage> {
+  final controller = TextEditingController();
+  String query = '';
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final repository = SearchRepository(AtlasLocalStore.instance.db);
     return _PageFrame(
       title: 'Search',
-      subtitle: 'Deterministic search across titles, text, tags, files and links.',
+      subtitle: 'Deterministic search across titles and note text.',
       children: [
         TextField(
+          controller: controller,
+          onChanged: (value) => setState(() => query = value),
           decoration: InputDecoration(
             hintText: 'Search notes…',
             prefixIcon: const Icon(Icons.search_rounded),
+            suffixIcon: query.isEmpty
+                ? null
+                : IconButton(
+                    tooltip: 'Clear search',
+                    onPressed: () {
+                      controller.clear();
+                      setState(() => query = '');
+                    },
+                    icon: const Icon(Icons.close_rounded),
+                  ),
             filled: true,
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: BorderSide.none,
+            ),
           ),
         ),
-        const SizedBox(height: 24),
-        const _EmptyState(icon: Icons.manage_search_rounded, title: 'Nothing to search yet', subtitle: 'Search will use the local index and never require AI.'),
+        const SizedBox(height: 20),
+        FutureBuilder<List<Note>>(
+          future: repository.searchNotes(query),
+          builder: (context, snapshot) {
+            final notes = snapshot.data ?? const <Note>[];
+            if (notes.isEmpty) {
+              return const _EmptyState(
+                icon: Icons.manage_search_rounded,
+                title: 'No matching notes',
+                subtitle: 'Search uses exact local text matching and never requires AI.',
+              );
+            }
+            return Column(
+              children: [
+                for (final note in notes)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Card(
+                      child: ListTile(
+                        leading: const Icon(Icons.description_outlined),
+                        title: Text(note.title),
+                        subtitle: Text(
+                          note.body.isEmpty ? 'No text yet' : note.body,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => NoteEditorPage(
+                              noteId: note.id,
+                              initialTitle: note.title,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            );
+          },
+        ),
       ],
     );
   }
