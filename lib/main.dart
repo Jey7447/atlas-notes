@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'core/cloud/atlas_cloud.dart';
 import 'data/local/atlas_local_store.dart';
 import 'data/local/note_repository.dart';
+import 'data/local/notebook_repository.dart';
 import 'data/local/atlas_database.dart';
 import 'data/local/search_repository.dart';
 
@@ -201,8 +202,15 @@ class HomePage extends StatelessWidget {
   }
 }
 
-class NotebooksPage extends StatelessWidget {
+class NotebooksPage extends StatefulWidget {
   const NotebooksPage({super.key});
+
+  @override
+  State<NotebooksPage> createState() => _NotebooksPageState();
+}
+
+class _NotebooksPageState extends State<NotebooksPage> {
+  final repository = NotebookRepository(AtlasLocalStore.instance.db);
 
   @override
   Widget build(BuildContext context) {
@@ -213,12 +221,195 @@ class NotebooksPage extends StatelessWidget {
         _ActionCard(
           icon: Icons.create_new_folder_outlined,
           title: 'Create a notebook',
-          subtitle: 'Your first notebook can hold multiple pages and note types.',
-          onTap: () {},
+          subtitle: 'Start a notebook for a course, project, or topic.',
+          onTap: _createNotebook,
         ),
         const SizedBox(height: 24),
-        const _EmptyState(icon: Icons.menu_book_outlined, title: 'No notebooks yet', subtitle: 'Create one when the local database layer is connected.'),
+        StreamBuilder<List<Notebook>>(
+          stream: repository.watchNotebooks(AtlasLocalStore.defaultWorkspaceId),
+          builder: (context, snapshot) {
+            final notebooks = snapshot.data ?? const <Notebook>[];
+            if (notebooks.isEmpty) {
+              return const _EmptyState(
+                icon: Icons.menu_book_outlined,
+                title: 'No notebooks yet',
+                subtitle: 'Create your first notebook to start organizing notes.',
+              );
+            }
+            return Column(
+              children: [
+                for (final notebook in notebooks)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Card(
+                      child: ListTile(
+                        leading: const Icon(Icons.menu_book_rounded),
+                        title: Text(notebook.name),
+                        subtitle: StreamBuilder<List<Note>>(
+                          stream: repository.watchNotes(notebook.id),
+                          builder: (context, noteSnapshot) {
+                            final count = noteSnapshot.data?.length ?? 0;
+                            return Text(
+                              count.toString() + (count == 1 ? ' note' : ' notes'),
+                            );
+                          },
+                        ),
+                        trailing: const Icon(Icons.chevron_right_rounded),
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => NotebookDetailPage(
+                              notebookId: notebook.id,
+                              notebookName: notebook.name,
+                            ),
+                          ),
+                        ),
+                        onLongPress: () => _renameNotebook(notebook.id, notebook.name),
+                      ),
+                    ),
+                  ),
+              ],
+            );
+          },
+        ),
       ],
+    );
+  }
+
+  Future<void> _createNotebook() async {
+    final controller = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('New notebook'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.words,
+          decoration: const InputDecoration(hintText: 'Notebook name'),
+          onSubmitted: (value) => Navigator.pop(context, value),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(context, controller.text), child: const Text('Create')),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (name == null || name.trim().isEmpty) return;
+    await repository.createNotebook(
+      workspaceId: AtlasLocalStore.defaultWorkspaceId,
+      name: name.trim(),
+    );
+  }
+
+  Future<void> _renameNotebook(String id, String currentName) async {
+    final controller = TextEditingController(text: currentName);
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Rename notebook'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.words,
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(context, controller.text), child: const Text('Save')),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (name == null) return;
+    await repository.renameNotebook(id, name);
+  }
+}
+
+class NotebookDetailPage extends StatelessWidget {
+  const NotebookDetailPage({
+    super.key,
+    required this.notebookId,
+    required this.notebookName,
+  });
+
+  final String notebookId;
+  final String notebookName;
+
+  @override
+  Widget build(BuildContext context) {
+    final repository = NotebookRepository(AtlasLocalStore.instance.db);
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(notebookName),
+        actions: [
+          IconButton(
+            tooltip: 'New note',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => NoteEditorPage(notebookId: notebookId),
+              ),
+            ),
+            icon: const Icon(Icons.add_rounded),
+          ),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => NoteEditorPage(notebookId: notebookId),
+          ),
+        ),
+        icon: const Icon(Icons.edit_rounded),
+        label: const Text('New note'),
+      ),
+      body: SafeArea(
+        child: StreamBuilder<List<Note>>(
+          stream: repository.watchNotes(notebookId),
+          builder: (context, snapshot) {
+            final notes = snapshot.data ?? const <Note>[];
+            if (notes.isEmpty) {
+              return const Center(
+                child: _EmptyState(
+                  icon: Icons.description_outlined,
+                  title: 'No notes in this notebook',
+                  subtitle: 'Create a note and it will appear here automatically.',
+                ),
+              );
+            }
+            return ListView.separated(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
+              itemCount: notes.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 10),
+              itemBuilder: (context, index) {
+                final note = notes[index];
+                return Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.description_outlined),
+                    title: Text(note.title),
+                    subtitle: Text(
+                      note.body.isEmpty ? 'No text yet' : note.body,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    trailing: note.pinned
+                        ? const Icon(Icons.push_pin_rounded, size: 18)
+                        : null,
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => NoteEditorPage(
+                          noteId: note.id,
+                          initialTitle: note.title,
+                          notebookId: notebookId,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            );
+          },
+        ),
+      ),
     );
   }
 }
