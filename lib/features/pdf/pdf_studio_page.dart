@@ -18,6 +18,7 @@ class _PdfStudioPageState extends State<PdfStudioPage> {
   Uint8List? _bytes;
   String _name = 'PDF document';
   PdfViewerController? _controller;
+  PdfDocumentRef? _documentRef;
   int _currentPage = 1;
   int _pageCount = 0;
   bool _showThumbnails = true;
@@ -27,6 +28,17 @@ class _PdfStudioPageState extends State<PdfStudioPage> {
     super.initState();
     _bytes = widget.initialBytes;
     _name = widget.initialName ?? _name;
+    final bytes = _bytes;
+    if (bytes != null) _setDocument(bytes);
+  }
+
+  void _setDocument(Uint8List bytes) {
+    _documentRef = PdfDocumentRefData(
+      bytes,
+      sourceName: _name,
+      useProgressiveLoading: true,
+    );
+    _controller = PdfViewerController();
   }
 
   Future<void> _importPdf() async {
@@ -45,6 +57,7 @@ class _PdfStudioPageState extends State<PdfStudioPage> {
         _currentPage = 1;
         _pageCount = 0;
       });
+      _setDocument(bytes);
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -108,7 +121,7 @@ class _PdfStudioPageState extends State<PdfStudioPage> {
                         ),
                       ),
                       child: _PdfThumbnails(
-                        bytes: bytes,
+                        documentRef: _documentRef!,
                         currentPage: _currentPage,
                         onPageTap: _goToPage,
                         onLoaded: (count) {
@@ -120,11 +133,9 @@ class _PdfStudioPageState extends State<PdfStudioPage> {
                     ),
                   ),
                 Expanded(
-                  child: PdfViewer.data(
-                    bytes,
-                    sourceName: _name,
-                    useProgressiveLoading: true,
-                    controller: _controller ??= PdfViewerController(),
+                  child: PdfViewer(
+                    _documentRef!,
+                    controller: _controller,
                     params: PdfViewerParams(
                       onPageChanged: (pageNumber) {
                         if (mounted) setState(() => _currentPage = pageNumber);
@@ -145,26 +156,21 @@ class _PdfStudioPageState extends State<PdfStudioPage> {
 
 class _PdfThumbnails extends StatelessWidget {
   const _PdfThumbnails({
-    required this.bytes,
+    required this.documentRef,
     required this.currentPage,
     required this.onPageTap,
     required this.onLoaded,
   });
 
-  final Uint8List bytes;
+  final PdfDocumentRef documentRef;
   final int currentPage;
   final ValueChanged<int> onPageTap;
   final ValueChanged<int> onLoaded;
 
   @override
   Widget build(BuildContext context) {
-    final ref = PdfDocumentRefData(
-      bytes,
-      sourceName: 'atlas-thumbnails.pdf',
-      useProgressiveLoading: true,
-    );
     return PdfDocumentViewBuilder(
-      documentRef: ref,
+      documentRef: documentRef,
       builder: (context, document) {
         final count = document?.pages.length ?? 0;
         if (count > 0) {
