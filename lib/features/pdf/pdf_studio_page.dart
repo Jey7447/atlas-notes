@@ -1,6 +1,9 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:pdfrx/pdfrx.dart';
 
@@ -20,6 +23,12 @@ class PdfStudioPage extends StatefulWidget {
 class _PdfStudioPageState extends State<PdfStudioPage> {
   Uint8List? _bytes;
   String _name = 'PDF document';
+  String? _pdfId;
+  _PdfTool _tool = _PdfTool.select;
+  double _strokeWidth = 2.5;
+  _PdfInk? _activeInk;
+  final Map<int, List<_PdfInk>> _annotationsByPage = {};
+  final Map<int, Future<void>> _annotationLoads = {};
   PdfViewerController? _controller;
   PdfDocumentRef? _documentRef;
   int _currentPage = 1;
@@ -33,10 +42,7 @@ class _PdfStudioPageState extends State<PdfStudioPage> {
     _bytes = widget.initialBytes;
     _name = widget.initialName ?? _name;
     final bytes = _bytes;
-    if (bytes != null) {
-      _setDocument(bytes);
-      WidgetsBinding.instance.addPostFrameCallback((_) => _registerDocument());
-    }
+    if (bytes != null) unawaited(_openDocument(bytes, _name));
   }
 
   Future<void> _registerDocument() async {
