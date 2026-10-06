@@ -59,6 +59,14 @@ class NotebookRepository {
     return id;
   }
 
+  Future<Page?> getFirstPage(String noteId) {
+    final query = db.select(db.pages)
+      ..where((p) => p.noteId.equals(noteId))
+      ..orderBy([(p) => OrderingTerm.asc(p.pageIndex)])
+      ..limit(1);
+    return query.getSingleOrNull();
+  }
+
   Future<String> createPage({
     required String noteId,
     String? title,
