@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:drift/drift.dart' as drift;
 import '../../core/models/canvas_document.dart';
 import '../../data/local/atlas_local_store.dart';
 import '../../data/local/canvas_repository.dart';
@@ -92,7 +93,7 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
     _saveTimer = Timer(const Duration(milliseconds: 400), _saveDocument);
   }
 
-  Future<void> _switchPage(Page page) async {
+  Future<void> _switchPage(drift.Page page) async {
     if (page.id == _pageId) return;
     await _saveDocument();
     final document = await _repository.loadPageDocument(page.id);
@@ -136,7 +137,7 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
     if (noteId == null || pageId == null) return;
     final pages = await (AtlasLocalStore.instance.db.select(AtlasLocalStore.instance.db.pages)
           ..where((p) => p.noteId.equals(noteId))
-          ..orderBy([(p) => OrderingTerm.asc(p.pageIndex)]))
+          ..orderBy([(p) => drift.OrderingTerm.asc(p.pageIndex)]))
         .get();
     if (pages.length <= 1) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(
@@ -149,7 +150,7 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
     await _notebookRepository.deletePage(pageId);
     final remaining = await (AtlasLocalStore.instance.db.select(AtlasLocalStore.instance.db.pages)
           ..where((p) => p.noteId.equals(noteId))
-          ..orderBy([(p) => OrderingTerm.asc(p.pageIndex)]))
+          ..orderBy([(p) => drift.OrderingTerm.asc(p.pageIndex)]))
         .get();
     if (!mounted || remaining.isEmpty) return;
     final nextIndex = deletedIndex.clamp(0, remaining.length - 1);
@@ -593,7 +594,7 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
             ),
           ),
           if (!_loading && _noteId != null)
-            StreamBuilder<List<Page>>(
+            StreamBuilder<List<drift.Page>>(
               stream: _notebookRepository.watchPages(_noteId!),
               builder: (context, snapshot) {
                 final pages = snapshot.data ?? const <Page>[];
