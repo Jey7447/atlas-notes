@@ -209,7 +209,7 @@ function initCanvas(){
   canvasDragging=true;c.classList.add("dragging");canvasStart={x:e.clientX,y:e.clientY,px:canvasPan.x,py:canvasPan.y};c.setPointerCapture(e.pointerId)
  };
  c.onpointermove=e=>{if(canvasMode==="pen"){moveStroke(e);return}if(canvasDragging){canvasPan.x=canvasStart.px+(e.clientX-canvasStart.x);canvasPan.y=canvasStart.py+(e.clientY-canvasStart.y);applyCanvasTransform()}};
- c.onpointerup=()=>{canvasDragging=false;c.classList.remove("dragging")};
+ c.onpointerup=()=>{canvasDragging=false;c.classList.remove("dragging");if(canvasMode==="pen"&&stroke){save();stroke=null;redrawInk()}};
 }
 function applyCanvasTransform(){const layer=$("#canvasLayer"),ink=$("#ink"),grid=$("#grid");if(layer)layer.style.transform=`translate(${canvasPan.x}px,${canvasPan.y}px) scale(${canvasScale})`;if(ink)ink.style.transform=`translate(${canvasPan.x}px,${canvasPan.y}px) scale(${canvasScale})`;if(grid)grid.style.transform=`translate(${canvasPan.x%24}px,${canvasPan.y%24}px)`;$("#zoomText")&&($("#zoomText").textContent=Math.round(canvasScale*100)+"%")}
 function renderCanvasLayer(){
@@ -226,16 +226,16 @@ function canvasModeSet(m){canvasMode=m;toast(m==="pen"?"Pen mode — draw anywhe
 let stroke=null;
 function startStroke(e){const rect=$("#canvas").getBoundingClientRect();stroke={points:[[(e.clientX-rect.left-canvasPan.x)/canvasScale,(e.clientY-rect.top-canvasPan.y)/canvasScale]],width:2};state.canvas.strokes.push(stroke);redrawInk()}
 function moveStroke(e){if(!stroke)return;const rect=$("#canvas").getBoundingClientRect();stroke.points.push([(e.clientX-rect.left-canvasPan.x)/canvasScale,(e.clientY-rect.top-canvasPan.y)/canvasScale]);redrawInk()}
-function redrawInk(){const c=$("#ink");if(!c)return;const g=c.getContext("2d");g.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);g.clearRect(0,0,c.clientWidth,c.clientHeight);g.strokeStyle="#aebfff";g.lineWidth=2;g.lineCap="round";for(const s of state.canvas.strokes){if(!s.points.length)continue;g.beginPath();s.points.forEach((p,i)=>i?g.lineTo(p[0]*canvasScale+canvasPan.x,p[1]*canvasScale+canvasPan.y):g.moveTo(p[0]*canvasScale+canvasPan.x,p[1]*canvasScale+canvasPan.y));g.stroke()}stroke=null;save()}
+function redrawInk(){const c=$("#ink");if(!c)return;const g=c.getContext("2d");g.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);g.clearRect(0,0,c.clientWidth,c.clientHeight);g.strokeStyle="#aebfff";g.lineWidth=2;g.lineCap="round";for(const s of state.canvas.strokes){if(!s.points.length)continue;g.beginPath();s.points.forEach((p,i)=>i?g.lineTo(p[0]*canvasScale+canvasPan.x,p[1]*canvasScale+canvasPan.y):g.moveTo(p[0]*canvasScale+canvasPan.x,p[1]*canvasScale+canvasPan.y));g.stroke()}if(stroke&&stroke.points.length){g.beginPath();stroke.points.forEach((p,i)=>i?g.lineTo(p[0]*canvasScale+canvasPan.x,p[1]*canvasScale+canvasPan.y):g.moveTo(p[0]*canvasScale+canvasPan.x,p[1]*canvasScale+canvasPan.y));g.stroke()}}
 function canvasClearInk(){state.canvas.strokes=[];save();redrawInk()}
 async function loadPdf(file){
  if(!file)return;const bytes=await file.arrayBuffer();const id=crypto.randomUUID();state.pdfs.push({id,name:file.name,bytes:Array.from(new Uint8Array(bytes)),created:Date.now()});save();await openPdfRecord(id)
 }
 async function openPdfRecord(id){
  const p=state.pdfs.find(x=>x.id===id);if(!p)return;const bytes=new Uint8Array(p.bytes);try{
-  if(!window.pdfjsLib)await loadScript("https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs","module");
+  if(!window.pdfjsLib){await loadScript("https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js");window.pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"}
   pdfDoc=await window.pdfjsLib.getDocument({data:bytes}).promise;pdfCurrent=1;renderPdfPages()
- }catch(e){toast("PDF engine could not load. Check your connection and try again.")}
+ }catch(e){console.error(e);toast("PDF engine could not load. Check your connection and try again.")}
 }
 function loadScript(src,type){return new Promise((res,rej)=>{const s=document.createElement("script");s.src=src;if(type)s.type=type;s.onload=res;s.onerror=rej;document.head.appendChild(s)})}
 function renderPdf(){setTimeout(()=>{},0);return topbar("Workspace","PDF Studio",`<label class="btn primary">＋ Import PDF<input id="pdfInput" type="file" accept="application/pdf" hidden></label>`)+`<div class="pdf-layout"><aside class="pdf-sidebar"><div class="muted" style="margin-bottom:10px">Documents</div>${state.pdfs.map(p=>`<button class="btn" style="width:100%;margin-bottom:5px;text-align:left" onclick="openPdfRecord('${p.id}')">▧ ${esc(p.name)}</button>`).join("")||'<div class="empty">Import a PDF to begin.</div>'}</aside><section class="pdf-main" id="pdfMain"><div class="pdf-empty"><div class="drop"><b>PDF Studio</b><p>Import a PDF to render pages locally, add pen/highlighter annotations and keep the document in this workspace.</p><input id="pdfInput2" type="file" accept="application/pdf"></div></div></section></div>`}
