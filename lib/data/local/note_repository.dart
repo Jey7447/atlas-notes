@@ -25,6 +25,18 @@ class NoteRepository {
     );
   }
 
+  Future<void> updateContent(String noteId, {String? title, String? body, bool? pinned}) async {
+    final now = DateTime.now().toUtc().toIso8601String();
+    await (db.update(db.notes)..where((n) => n.id.equals(noteId))).write(
+      NotesCompanion(
+        title: title == null ? const Value.absent() : Value(title),
+        body: body == null ? const Value.absent() : Value(body),
+        pinned: pinned == null ? const Value.absent() : Value(pinned),
+        updatedAt: Value(now),
+      ),
+    );
+  }
+
   Future<void> updateTitle(String noteId, String title) async {
     final now = DateTime.now().toUtc().toIso8601String();
     await (db.update(db.notes)..where((n) => n.id.equals(noteId))).write(
