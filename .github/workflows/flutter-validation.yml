@@ -1,0 +1,42 @@
+name: Flutter validation
+
+on:
+  push:
+    branches: [atlas-2.0, main]
+  pull_request:
+    branches: [atlas-2.0, main]
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Generate Drift code
+        run: dart run build_runner build --delete-conflicting-outputs
+
+      - name: Commit generated sources
+        if: github.event_name == 'push'
+        uses: stefanzweifel/git-auto-commit-action@v7
+        with:
+          commit_message: "chore: refresh generated Dart sources"
+          file_pattern: "lib/**/*.g.dart"
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test
