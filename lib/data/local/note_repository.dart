@@ -24,11 +24,8 @@ class NoteRepository {
     String title = 'Untitled note',
     String? notebookId,
   }) async {
-    final id = await db.createNote(
-      workspaceId: workspaceId,
-      title: title,
-      notebookId: notebookId,
-    );
+    final id = await db.createNote(workspaceId: workspaceId, title: title);
+    if (notebookId != null) await moveToNotebook(id, notebookId);
     return id;
   }
 
@@ -59,9 +56,7 @@ class NoteRepository {
     );
   }
 
-  Future<void> updateTitle(String noteId, String title) async {
-    await updateContent(noteId, title: title);
-  }
+  Future<void> updateTitle(String noteId, String title) => updateContent(noteId, title: title);
 
   Future<void> moveToTrash(String noteId) async {
     final now = DateTime.now().toUtc().toIso8601String();
