@@ -92,6 +92,36 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
     _saveTimer = Timer(const Duration(milliseconds: 400), _saveDocument);
   }
 
+  Future<void> _switchPage(Page page) async {
+    if (page.id == _pageId) return;
+    await _saveDocument();
+    final document = await _repository.loadPageDocument(page.id);
+    if (!mounted) return;
+    setState(() {
+      _pageId = page.id;
+      _pageIndex = page.pageIndex;
+      _document = document ?? const CanvasDocument();
+      _activeStroke = null;
+      _shapeStart = null;
+      _shapeCurrent = null;
+      _undo.clear();
+      _redo.clear();
+      _saved = true;
+    });
+  }
+
+  Future<void> _addPage() async {
+    final noteId = _noteId;
+    if (noteId == null) return;
+    await _saveDocument();
+    final id = await _notebookRepository.createPage(noteId: noteId);
+    final page = await (AtlasLocalStore.instance.db.select(AtlasLocalStore.instance.db.pages)
+          ..where((p) => p.id.equals(id)))
+        .getSingle();
+    if (!mounted) return;
+    await _switchPage(page);
+  }
+
   Future<void> _saveDocument() async {
     final pageId = _pageId;
     final noteId = _noteId;
@@ -407,6 +437,11 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
             icon: const Icon(Icons.redo_rounded),
           ),
           IconButton(
+            tooltip: 'Add page',
+            onPressed: _loading ? null : _addPage,
+            icon: const Icon(Icons.note_add_outlined),
+          ),
+          IconButton(
             tooltip: 'Document JSON',
             onPressed: _showJson,
             icon: const Icon(Icons.data_object_rounded),
@@ -488,6 +523,35 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
               ),
             ),
           ),
+          if (!_loading && _noteId != null)
+            StreamBuilder<List<Page>>(
+              stream: _notebookRepository.watchPages(_noteId!),
+              builder: (context, snapshot) {
+                final pages = snapshot.data ?? const <Page>[];
+                if (pages.isEmpty) return const SizedBox.shrink();
+                return Material(
+                  color: theme.colorScheme.surfaceContainerLow,
+                  child: SizedBox(
+                    height: 52,
+                    child: ListView.separated(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      scrollDirection: Axis.horizontal,
+                      itemCount: pages.length,
+                      separatorBuilder: (_, __) => const SizedBox(width: 8),
+                      itemBuilder: (context, index) {
+                        final page = pages[index];
+                        final selected = page.id == _pageId;
+                        return ChoiceChip(
+                          selected: selected,
+                          label: Text('Page ${page.pageIndex + 1}'),
+                          onSelected: (_) => _switchPage(page),
+                        );
+                      },
+                    ),
+                  ),
+                );
+              },
+            ),
           Expanded(
             child: ColoredBox(
               color: theme.brightness == Brightness.light
