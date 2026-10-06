@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:drift/drift.dart';
+
 import '../../core/models/canvas_document.dart';
 import 'atlas_database.dart';
 
