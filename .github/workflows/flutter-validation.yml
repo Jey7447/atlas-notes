@@ -36,6 +36,13 @@ jobs:
       - name: Test
         run: flutter test
 
+      - name: Prepare Drift web assets
+        if: github.event_name == 'push' && github.ref == 'refs/heads/atlas-2.0'
+        run: |
+          mkdir -p web
+          curl -fL --retry 3 -o web/sqlite3.wasm https://github.com/simolus3/sqlite3.dart/releases/download/sqlite3-3.7.0/sqlite3.wasm
+          curl -fL --retry 3 -o web/drift_worker.js https://github.com/simolus3/drift/releases/download/drift-2.35.1/drift_worker.js
+
       - name: Build Flutter web
         if: github.event_name == 'push' && github.ref == 'refs/heads/atlas-2.0'
         run: flutter build web --release
