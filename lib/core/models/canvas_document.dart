@@ -54,6 +54,10 @@ class CanvasText {
   final double y;
   final Color color;
   final double size;
+  CanvasText copyWith({double? x, double? y}) => CanvasText(
+    id: id, text: text, x: x ?? this.x, y: y ?? this.y, color: color, size: size,
+  );
+  Rect get bounds => Rect.fromLTWH(x, y, math.max(20, text.length * size * .58), size * 1.25);
   Map<String,Object> toJson()=>{'id':id,'text':text,'x':x,'y':y,'color':color.toARGB32(),'size':size};
   factory CanvasText.fromJson(Map<String,dynamic> json)=>CanvasText(
     id:json['id'] as String,
@@ -77,6 +81,23 @@ class CanvasDocument {
   CanvasDocument remove(String id)=>CanvasDocument(strokes:strokes.where((s)=>s.id!=id).toList(),texts:texts,paperColor:paperColor,showGrid:showGrid);
   CanvasDocument clear()=>CanvasDocument(paperColor:paperColor,showGrid:showGrid);
   CanvasDocument withPaper({Color? color,bool? grid})=>CanvasDocument(strokes:strokes,texts:texts,paperColor:(color??backgroundColor).toARGB32(),showGrid:grid??showGrid);
+  CanvasDocument translateIds(Set<String> ids, Offset delta) => CanvasDocument(
+    strokes: [
+      for (final stroke in strokes)
+        ids.contains(stroke.id)
+            ? stroke.copyWith(points: [
+                for (final p in stroke.points)
+                  CanvasPoint(p.x + delta.dx, p.y + delta.dy, pressure: p.pressure),
+              ])
+            : stroke,
+    ],
+    texts: [
+      for (final text in texts)
+        ids.contains(text.id) ? text.copyWith(x: text.x + delta.dx, y: text.y + delta.dy) : text,
+    ],
+    paperColor: paperColor,
+    showGrid: showGrid,
+  );
   Map<String,Object> toJson()=>{'strokes':strokes.map((s)=>s.toJson()).toList(),'texts':texts.map((t)=>t.toJson()).toList(),'paperColor':paperColor,'showGrid':showGrid};
   factory CanvasDocument.fromJson(Map<String,dynamic> json)=>CanvasDocument(
     strokes:(json['strokes'] as List<dynamic>? ?? const []).map((s)=>CanvasStroke.fromJson(s as Map<String,dynamic>)).toList(),
