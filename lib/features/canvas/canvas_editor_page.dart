@@ -50,6 +50,8 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
   Offset? _selectionCurrent;
   final Set<String> _selectedIds = <String>{};
   _SelectionMode _selectionMode = _SelectionMode.replace;
+
+  Set<String> get _editableSelectionIds => _selectedIds.difference(_document.lockedIds);
   Offset? _selectionMoveLast;
   bool _movingSelection = false;
   _SelectionInteraction _selectionInteraction = _SelectionInteraction.none;
@@ -313,6 +315,7 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
     texts: _document.texts.where((t) => _selectedIds.contains(t.id)).toList(),
     paperColor: _document.paperColor,
     showGrid: _document.showGrid,
+    lockedIds: _selectedIds.intersection(_document.lockedIds),
   );
 
   Future<void> _copySelection({bool cut = false}) async {
@@ -324,7 +327,7 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
     if (cut) {
       _pushHistory();
       setState(() {
-        _document = _document.removeIds(_selectedIds);
+        _document = _document.removeIds(_editableSelectionIds);
         _selectedIds.clear();
       });
       _scheduleSave();
@@ -354,6 +357,7 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
           texts: [..._document.texts, ...newTexts],
           paperColor: _document.paperColor,
           showGrid: _document.showGrid,
+          lockedIds: _document.lockedIds,
         );
         _selectedIds
           ..clear()
@@ -366,10 +370,10 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
   }
 
   void _duplicateSelection() {
-    if (_selectedIds.isEmpty) return;
+    if (_editableSelectionIds.isEmpty) return;
     _pushHistory();
     final before = _document;
-    final duplicated = before.duplicateIds(_selectedIds);
+    final duplicated = before.duplicateIds(_editableSelectionIds);
     final newIds = <String>{
       ...duplicated.strokes.where((s) => !before.strokes.any((b) => b.id == s.id)).map((s) => s.id),
       ...duplicated.texts.where((t) => !before.texts.any((b) => b.id == t.id)).map((t) => t.id),
@@ -382,11 +386,24 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
   }
 
   void _deleteSelection() {
-    if (_selectedIds.isEmpty) return;
+    if (_editableSelectionIds.isEmpty) return;
     _pushHistory();
     setState(() {
-      _document = _document.removeIds(_selectedIds);
+      _document = _document.removeIds(_editableSelectionIds);
       _selectedIds.clear();
+    });
+    _scheduleSave();
+  }
+
+
+  void _toggleSelectionLock() {
+    if (_selectedIds.isEmpty) return;
+    _pushHistory();
+    final locked = _selectedIds.intersection(_document.lockedIds);
+    setState(() {
+      _document = locked.length == _selectedIds.length
+          ? _document.unlockIds(_selectedIds)
+          : _document.lockIds(_selectedIds);
     });
     _scheduleSave();
   }
@@ -397,7 +414,7 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
       final selectionBounds = _selectionBounds;
       final resizeHandle = _resizeHandle;
       final rotateHandle = _rotateHandle;
-      if (_selectedIds.isNotEmpty && selectionBounds != null) {
+      if (_selectedIds.isNotEmpty && _document.lockedIds.intersection(_selectedIds).isEmpty && selectionBounds != null) {
         if (rotateHandle != null && _near(point, rotateHandle)) {
           _beginSelectionTransform(_SelectionInteraction.rotate, point);
           return;
@@ -478,7 +495,7 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
           final delta = point - last;
           if (delta != Offset.zero) {
             setState(() {
-              _document = _document.translateIds(_selectedIds, delta);
+              _document = _document.translateIds(_editableSelectionIds, delta);
               _selectionMoveLast = point;
             });
           }
@@ -488,13 +505,13 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
         final width = math.max(24.0, point.dx - startBounds.left).toDouble();
         final height = math.max(24.0, point.dy - startBounds.top).toDouble();
         final target = Rect.fromLTWH(startBounds.left, startBounds.top, width, height);
-        setState(() => _document = startDocument.scaleIds(_selectedIds, startBounds, target));
+        setState(() => _document = startDocument.scaleIds(_editableSelectionIds, startBounds, target));
       } else if (_selectionInteraction == _SelectionInteraction.rotate &&
           startDocument != null && startBounds != null && startPoint != null) {
         final center = startBounds.center;
         final startAngle = math.atan2(startPoint.dy - center.dy, startPoint.dx - center.dx);
         final currentAngle = math.atan2(point.dy - center.dy, point.dx - center.dx);
-        setState(() => _document = startDocument.rotateIds(_selectedIds, currentAngle - startAngle, center));
+        setState(() => _document = startDocument.rotateIds(_editableSelectionIds, currentAngle - startAngle, center));
       } else {
         setState(() {
           _selectionCurrent = point;
@@ -1102,7 +1119,12 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
                     IconButton(tooltip: 'Copy', onPressed: _selectedIds.isEmpty ? null : () => _copySelection(), icon: const Icon(Icons.content_copy_rounded)),
                     IconButton(tooltip: 'Cut', onPressed: _selectedIds.isEmpty ? null : () => _copySelection(cut: true), icon: const Icon(Icons.content_cut_rounded)),
                     IconButton(tooltip: 'Paste', onPressed: _pasteSelection, icon: const Icon(Icons.content_paste_rounded)),
-                    IconButton(tooltip: 'Delete', onPressed: _selectedIds.isEmpty ? null : _deleteSelection, icon: const Icon(Icons.delete_outline_rounded)),
+                    IconButton(
+                      tooltip: _selectedIds.isNotEmpty && _document.lockedIds.intersection(_selectedIds).length == _selectedIds.length ? 'Unlock' : 'Lock',
+                      onPressed: _selectedIds.isEmpty ? null : _toggleSelectionLock,
+                      icon: Icon(_selectedIds.isNotEmpty && _document.lockedIds.intersection(_selectedIds).length == _selectedIds.length ? Icons.lock_open_rounded : Icons.lock_outline_rounded),
+                    ),
+                    IconButton(tooltip: 'Delete', onPressed: _editableSelectionIds.isEmpty ? null : _deleteSelection, icon: const Icon(Icons.delete_outline_rounded)),
                     TextButton.icon(onPressed: _selectedIds.isEmpty ? null : () => setState(() => _selectedIds.clear()), icon: const Icon(Icons.close_rounded, size: 18), label: const Text('Deselect')),
                   ],
                 ),
