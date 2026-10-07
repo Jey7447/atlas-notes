@@ -256,7 +256,6 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
   void _pointerDown(PointerDownEvent event) {
     final point = _canvasPosition(event);
     if (_tool == CanvasTool.lasso) {
-      _pushHistory();
       setState(() {
         _lassoPoints..clear()..add(point);
         _selectedIds.clear();
@@ -473,7 +472,7 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
     CanvasPenStyle.marker => 'Marker',
     CanvasPenStyle.fountain => 'Fountain pen',
     CanvasPenStyle.dashed => 'Dashed pen',
-  }
+  };
 
   List<CanvasPoint> _shapePoints(CanvasTool tool, Offset start, Offset end) {
     if (tool == CanvasTool.line) {
@@ -524,7 +523,7 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
   }
 
   void _clear() {
-    if (_document.strokes.isEmpty) return;
+    if (_document.strokes.isEmpty && _document.texts.isEmpty) return;
     _pushHistory();
     setState(() => _document = _document.clear());
     _scheduleSave();
@@ -689,7 +688,7 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
           ),
           IconButton(
             tooltip: 'Clear',
-            onPressed: _document.strokes.isEmpty ? null : _clear,
+            onPressed: (_document.strokes.isEmpty && _document.texts.isEmpty) ? null : _clear,
             icon: const Icon(Icons.delete_sweep_outlined),
           ),
           const SizedBox(width: 8),
@@ -831,7 +830,7 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
                 boundaryMargin: const EdgeInsets.all(1000),
                 minScale: 0.5,
                 maxScale: 3.0,
-                panEnabled: !_drawingTool,
+                panEnabled: !(_drawingTool || _tool == CanvasTool.eraser || _tool == CanvasTool.lasso || _tool == CanvasTool.text || _tool == CanvasTool.line || _tool == CanvasTool.rectangle || _tool == CanvasTool.ellipse),
                 scaleEnabled: true,
                 clipBehavior: Clip.none,
                 onInteractionUpdate: (_) {
