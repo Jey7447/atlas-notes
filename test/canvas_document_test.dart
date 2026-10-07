@@ -77,5 +77,13 @@ void main() {
       expect(moved.texts.first.x, 55);
       expect(moved.texts.first.y, 45);
     });
+
+    test('scales selected content', () {
+      const document = CanvasDocument(
+        strokes: [CanvasStroke(id: 's', points: [CanvasPoint(10, 10), CanvasPoint(20, 20)], color: Color(0xFF000000), width: 2)],
+      );
+      final result = document.scaleIds({'s'}, const Rect.fromLTWH(10, 10, 10, 10), const Rect.fromLTWH(10, 10, 20, 20));
+      expect(result.strokes.first.points.last.offset, const Offset(30, 30));
+    });
   });
 }
