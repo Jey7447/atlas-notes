@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import '../../core/models/canvas_document.dart';
 import '../../data/local/atlas_local_store.dart';
@@ -458,21 +457,25 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
     if (selected != null) setState(() => _penStyle = selected);
   }
 
-  IconData _penIcon(CanvasPenStyle style) => switch (style) {
-    CanvasPenStyle.ballpoint => Icons.edit_rounded,
-    CanvasPenStyle.pencil => Icons.create_rounded,
-    CanvasPenStyle.marker => Icons.brush_rounded,
-    CanvasPenStyle.fountain => Icons.format_ink_highlighter_rounded,
-    CanvasPenStyle.dashed => Icons.more_horiz_rounded,
-  };
+  IconData _penIcon(CanvasPenStyle style) {
+    switch (style) {
+      case CanvasPenStyle.ballpoint: return Icons.edit_rounded;
+      case CanvasPenStyle.pencil: return Icons.create_rounded;
+      case CanvasPenStyle.marker: return Icons.brush_rounded;
+      case CanvasPenStyle.fountain: return Icons.auto_awesome_rounded;
+      case CanvasPenStyle.dashed: return Icons.more_horiz_rounded;
+    }
+  }
 
-  String _penLabel(CanvasPenStyle style) => switch (style) {
-    CanvasPenStyle.ballpoint => 'Ballpoint',
-    CanvasPenStyle.pencil => 'Pencil',
-    CanvasPenStyle.marker => 'Marker',
-    CanvasPenStyle.fountain => 'Fountain pen',
-    CanvasPenStyle.dashed => 'Dashed pen',
-  };
+  String _penLabel(CanvasPenStyle style) {
+    switch (style) {
+      case CanvasPenStyle.ballpoint: return 'Ballpoint';
+      case CanvasPenStyle.pencil: return 'Pencil';
+      case CanvasPenStyle.marker: return 'Marker';
+      case CanvasPenStyle.fountain: return 'Fountain pen';
+      case CanvasPenStyle.dashed: return 'Dashed pen';
+    }
+  }
 
   List<CanvasPoint> _shapePoints(CanvasTool tool, Offset start, Offset end) {
     if (tool == CanvasTool.line) {
