@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../core/models/canvas_document.dart';
 import '../../data/local/atlas_local_store.dart';
 import 'package:drift/drift.dart' show OrderingTerm;
@@ -18,6 +19,8 @@ class CanvasEditorPage extends StatefulWidget {
   @override
   State<CanvasEditorPage> createState() => _CanvasEditorPageState();
 }
+
+enum _SelectionInteraction { none, move, resize, rotate }
 
 class _CanvasEditorPageState extends State<CanvasEditorPage> {
   CanvasDocument _document = const CanvasDocument();
@@ -45,6 +48,10 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
   final Set<String> _selectedIds = <String>{};
   Offset? _selectionMoveLast;
   bool _movingSelection = false;
+  _SelectionInteraction _selectionInteraction = _SelectionInteraction.none;
+  CanvasDocument? _selectionStartDocument;
+  Rect? _selectionStartBounds;
+  Offset? _selectionStartPoint;
 
   @override
   void initState() {
@@ -254,26 +261,157 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
 
   Offset _canvasPosition(PointerEvent event) => _transformController.toScene(event.localPosition);
 
+  bool _near(Offset point, Offset target, {double radius = 18}) =>
+      (point - target).distance <= radius;
+
+  Offset? get _resizeHandle => _selectionBounds?.bottomRight;
+  Offset? get _rotateHandle {
+    final bounds = _selectionBounds;
+    return bounds == null ? null : Offset(bounds.center.dx, bounds.top - 34);
+  }
+
+  void _beginSelectionTransform(_SelectionInteraction interaction, Offset point) {
+    _pushHistory();
+    setState(() {
+      _selectionInteraction = interaction;
+      _selectionStartDocument = _document;
+      _selectionStartBounds = _selectionBounds;
+      _selectionStartPoint = point;
+      _movingSelection = interaction == _SelectionInteraction.move;
+      _selectionMoveLast = _movingSelection ? point : null;
+    });
+  }
+
+  void _finishSelectionTransform() {
+    final active = _selectionInteraction != _SelectionInteraction.none;
+    setState(() {
+      _selectionInteraction = _SelectionInteraction.none;
+      _selectionStartDocument = null;
+      _selectionStartBounds = null;
+      _selectionStartPoint = null;
+      _selectionMoveLast = null;
+      _movingSelection = false;
+      _selectionInteraction = _SelectionInteraction.none;
+      _selectionStartDocument = null;
+      _selectionStartBounds = null;
+      _selectionStartPoint = null;
+    });
+    if (active) _scheduleSave();
+  }
+
+  CanvasDocument _selectedDocument() => CanvasDocument(
+    strokes: _document.strokes.where((s) => _selectedIds.contains(s.id)).toList(),
+    texts: _document.texts.where((t) => _selectedIds.contains(t.id)).toList(),
+    paperColor: _document.paperColor,
+    showGrid: _document.showGrid,
+  );
+
+  Future<void> _copySelection({bool cut = false}) async {
+    if (_selectedIds.isEmpty) return;
+    final selected = _selectedDocument();
+    await Clipboard.setData(ClipboardData(
+      text: 'ATLAS_CANVAS_CLIPBOARD:' + jsonEncode(selected.toJson()),
+    ));
+    if (cut) {
+      _pushHistory();
+      setState(() {
+        _document = _document.removeIds(_selectedIds);
+        _selectedIds.clear();
+      });
+      _scheduleSave();
+    }
+  }
+
+  Future<void> _pasteSelection() async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    final raw = data?.text;
+    const prefix = 'ATLAS_CANVAS_CLIPBOARD:';
+    if (raw == null || !raw.startsWith(prefix)) return;
+    try {
+      final pasted = CanvasDocument.fromJson(
+        jsonDecode(raw.substring(prefix.length)) as Map<String, dynamic>,
+      );
+      final ids = <String>{
+        ...pasted.strokes.map((s) => s.id),
+        ...pasted.texts.map((t) => t.id),
+      };
+      final moved = pasted.duplicateIds(ids, delta: const Offset(40, 40));
+      final newStrokes = moved.strokes.where((s) => !pasted.strokes.any((p) => p.id == s.id)).toList();
+      final newTexts = moved.texts.where((t) => !pasted.texts.any((p) => p.id == t.id)).toList();
+      _pushHistory();
+      setState(() {
+        _document = CanvasDocument(
+          strokes: [..._document.strokes, ...newStrokes],
+          texts: [..._document.texts, ...newTexts],
+          paperColor: _document.paperColor,
+          showGrid: _document.showGrid,
+        );
+        _selectedIds
+          ..clear()
+          ..addAll([...newStrokes.map((s) => s.id), ...newTexts.map((t) => t.id)]);
+      });
+      _scheduleSave();
+    } catch (_) {
+      // Ignore non-Atlas clipboard content.
+    }
+  }
+
+  void _duplicateSelection() {
+    if (_selectedIds.isEmpty) return;
+    _pushHistory();
+    final before = _document;
+    final duplicated = before.duplicateIds(_selectedIds);
+    final newIds = <String>{
+      ...duplicated.strokes.where((s) => !before.strokes.any((b) => b.id == s.id)).map((s) => s.id),
+      ...duplicated.texts.where((t) => !before.texts.any((b) => b.id == t.id)).map((t) => t.id),
+    };
+    setState(() {
+      _document = duplicated;
+      _selectedIds..clear()..addAll(newIds);
+    });
+    _scheduleSave();
+  }
+
+  void _deleteSelection() {
+    if (_selectedIds.isEmpty) return;
+    _pushHistory();
+    setState(() {
+      _document = _document.removeIds(_selectedIds);
+      _selectedIds.clear();
+    });
+    _scheduleSave();
+  }
+
   void _pointerDown(PointerDownEvent event) {
     final point = _canvasPosition(event);
     if (_tool == CanvasTool.lasso) {
       final selectionBounds = _selectionBounds;
-      if (_selectedIds.isNotEmpty &&
-          selectionBounds != null &&
-          selectionBounds.inflate(18).contains(point)) {
-        _pushHistory();
-        setState(() {
-          _movingSelection = true;
-          _selectionMoveLast = point;
-        });
-      } else {
-        setState(() {
-          _lassoPoints..clear()..add(point);
-          _selectedIds.clear();
-          _selectionMoveLast = null;
-          _movingSelection = false;
-        });
+      final resizeHandle = _resizeHandle;
+      final rotateHandle = _rotateHandle;
+      if (_selectedIds.isNotEmpty && selectionBounds != null) {
+        if (rotateHandle != null && _near(point, rotateHandle)) {
+          _beginSelectionTransform(_SelectionInteraction.rotate, point);
+          return;
+        }
+        if (resizeHandle != null && _near(point, resizeHandle)) {
+          _beginSelectionTransform(_SelectionInteraction.resize, point);
+          return;
+        }
+        if (selectionBounds.inflate(18).contains(point)) {
+          _beginSelectionTransform(_SelectionInteraction.move, point);
+          return;
+        }
       }
+      setState(() {
+        _lassoPoints..clear()..add(point);
+        _selectedIds.clear();
+        _selectionInteraction = _SelectionInteraction.none;
+        _selectionStartDocument = null;
+        _selectionStartBounds = null;
+        _selectionStartPoint = null;
+        _selectionMoveLast = null;
+        _movingSelection = false;
+      });
       return;
     }
     if (_tool == CanvasTool.text) {
@@ -318,7 +456,10 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
   void _pointerMove(PointerMoveEvent event) {
     final point = _canvasPosition(event);
     if (_tool == CanvasTool.lasso) {
-      if (_movingSelection) {
+      final startDocument = _selectionStartDocument;
+      final startBounds = _selectionStartBounds;
+      final startPoint = _selectionStartPoint;
+      if (_selectionInteraction == _SelectionInteraction.move) {
         final last = _selectionMoveLast;
         if (last != null) {
           final delta = point - last;
@@ -329,6 +470,16 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
             });
           }
         }
+      } else if (_selectionInteraction == _SelectionInteraction.resize && startDocument != null && startBounds != null) {
+        final width = math.max(24, point.dx - startBounds.left);
+        final height = math.max(24, point.dy - startBounds.top);
+        final target = Rect.fromLTWH(startBounds.left, startBounds.top, width, height);
+        setState(() => _document = startDocument.scaleIds(_selectedIds, startBounds, target));
+      } else if (_selectionInteraction == _SelectionInteraction.rotate && startDocument != null && startBounds != null && startPoint != null) {
+        final center = startBounds.center;
+        final startAngle = math.atan2(startPoint.dy - center.dy, startPoint.dx - center.dx);
+        final currentAngle = math.atan2(point.dy - center.dy, point.dx - center.dx);
+        setState(() => _document = startDocument.rotateIds(_selectedIds, currentAngle - startAngle, center));
       } else {
         setState(() => _lassoPoints.add(point));
       }
@@ -359,12 +510,8 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
 
   void _pointerUp(PointerUpEvent event) {
     if (_tool == CanvasTool.lasso) {
-      if (_movingSelection) {
-        setState(() {
-          _movingSelection = false;
-          _selectionMoveLast = null;
-        });
-        _scheduleSave();
+      if (_selectionInteraction != _SelectionInteraction.none) {
+        _finishSelectionTransform();
         return;
       }
       final points = List<Offset>.from(_lassoPoints);
