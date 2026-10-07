@@ -42,7 +42,7 @@ class CanvasStroke {
     width:(json['width'] as num).toDouble(),
     opacity:(json['opacity'] as num?)?.toDouble() ?? 1,
     highlighter:json['highlighter'] as bool? ?? false,
-    penStyle:CanvasPenStyle.values.where((v)=>v.name == json['penStyle']).firstOrNull ?? CanvasPenStyle.ballpoint,
+    penStyle:CanvasPenStyle.values.firstWhere((v)=>v.name == json['penStyle'], orElse:()=>CanvasPenStyle.ballpoint),
   );
 }
 
