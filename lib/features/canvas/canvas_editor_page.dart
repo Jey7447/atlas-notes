@@ -471,8 +471,8 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
           }
         }
       } else if (_selectionInteraction == _SelectionInteraction.resize && startDocument != null && startBounds != null) {
-        final width = math.max(24, point.dx - startBounds.left);
-        final height = math.max(24, point.dy - startBounds.top);
+        final width = math.max(24.0, point.dx - startBounds.left).toDouble();
+        final height = math.max(24.0, point.dy - startBounds.top).toDouble();
         final target = Rect.fromLTWH(startBounds.left, startBounds.top, width, height);
         setState(() => _document = startDocument.scaleIds(_selectedIds, startBounds, target));
       } else if (_selectionInteraction == _SelectionInteraction.rotate && startDocument != null && startBounds != null && startPoint != null) {
