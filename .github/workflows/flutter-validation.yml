@@ -3,11 +3,13 @@ name: Flutter validation
 on:
   push:
     branches: [atlas-2.0, main]
+    paths-ignore:
+      - "build/web/**"
   pull_request:
     branches: [atlas-2.0, main]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   validate:
@@ -33,3 +35,20 @@ jobs:
 
       - name: Test
         run: flutter test
+
+      - name: Build Flutter web
+        if: github.event_name == 'push' && github.ref == 'refs/heads/atlas-2.0'
+        run: flutter build web --release
+
+      - name: Publish prebuilt web output
+        if: github.event_name == 'push' && github.ref == 'refs/heads/atlas-2.0'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add build/web
+          if git diff --cached --quiet; then
+            echo "No web build changes to commit."
+            exit 0
+          fi
+          git commit -m "build: publish Flutter web output"
+          git push origin HEAD:atlas-2.0
