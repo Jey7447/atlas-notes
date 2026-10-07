@@ -34,6 +34,7 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
   final List<CanvasDocument> _undo = [];
   final List<CanvasDocument> _redo = [];
   CanvasTool _tool = CanvasTool.pen;
+  CanvasPenStyle _penStyle = CanvasPenStyle.ballpoint;
   Color _color = const Color(0xFF1F2430);
   double _width = 3;
   double _zoom = 1;
@@ -41,6 +42,8 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
   CanvasStroke? _activeStroke;
   Offset? _shapeStart;
   Offset? _shapeCurrent;
+  final List<Offset> _lassoPoints = [];
+  final Set<String> _selectedIds = <String>{};
 
   @override
   void initState() {
@@ -251,8 +254,19 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
   Offset _canvasPosition(PointerEvent event) => _transformController.toScene(event.localPosition);
 
   void _pointerDown(PointerDownEvent event) {
-    if (event.kind == PointerDeviceKind.touch && _drawingTool) return;
     final point = _canvasPosition(event);
+    if (_tool == CanvasTool.lasso) {
+      _pushHistory();
+      setState(() {
+        _lassoPoints..clear()..add(point);
+        _selectedIds.clear();
+      });
+      return;
+    }
+    if (_tool == CanvasTool.text) {
+      unawaited(_addTextAt(point));
+      return;
+    }
 
     if (_tool == CanvasTool.eraser) {
       _eraseAt(point);
@@ -283,13 +297,17 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
         width: _width,
         opacity: _tool == CanvasTool.highlighter ? 0.26 : 1,
         highlighter: _tool == CanvasTool.highlighter,
+        penStyle: _penStyle,
       );
     });
   }
 
   void _pointerMove(PointerMoveEvent event) {
-    if (event.kind == PointerDeviceKind.touch && _drawingTool) return;
     final point = _canvasPosition(event);
+    if (_tool == CanvasTool.lasso) {
+      setState(() => _lassoPoints.add(point));
+      return;
+    }
 
     if (_tool == CanvasTool.eraser) {
       _eraseAt(point);
@@ -314,7 +332,21 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
   }
 
   void _pointerUp(PointerUpEvent event) {
-    if (event.kind == PointerDeviceKind.touch && _drawingTool) return;
+    if (_tool == CanvasTool.lasso) {
+      final points = List<Offset>.from(_lassoPoints);
+      _lassoPoints.clear();
+      if (points.length >= 3) {
+        final bounds = _boundsOf(points);
+        final selected = _document.strokes
+            .where((s) => s.bounds.overlaps(bounds) || bounds.contains(s.bounds.center))
+            .map((s) => s.id)
+            .toSet();
+        setState(() {
+          _selectedIds..clear()..addAll(selected);
+        });
+      }
+      return;
+    }
 
     final start = _shapeStart;
     final current = _shapeCurrent;
@@ -327,6 +359,7 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
             points: points,
             color: _color,
             width: _width,
+            penStyle: _penStyle,
           ));
         });
       }
@@ -352,7 +385,94 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
       _activeStroke = null;
       _shapeStart = null;
       _shapeCurrent = null;
+      _lassoPoints.clear();
     });
+  }
+
+  Rect _boundsOf(List<Offset> points) {
+    if (points.isEmpty) return Rect.zero;
+    var minX = points.first.dx, maxX = points.first.dx;
+    var minY = points.first.dy, maxY = points.first.dy;
+    for (final p in points.skip(1)) {
+      minX = math.min(minX, p.dx);
+      maxX = math.max(maxX, p.dx);
+      minY = math.min(minY, p.dy);
+      maxY = math.max(maxY, p.dy);
+    }
+    return Rect.fromLTRB(minX, minY, maxX, maxY).inflate(8);
+  }
+
+  Future<void> _addTextAt(Offset point) async {
+    final controller = TextEditingController();
+    final text = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Add text'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          minLines: 1,
+          maxLines: 5,
+          decoration: const InputDecoration(hintText: 'Type your text…', border: OutlineInputBorder()),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(context, controller.text.trim()), child: const Text('Add')),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (!mounted || text == null || text.isEmpty) return;
+    _pushHistory();
+    setState(() {
+      _document = _document.addText(CanvasText(
+        id: 'text_${DateTime.now().microsecondsSinceEpoch}',
+        text: text,
+        x: point.dx,
+        y: point.dy,
+        color: _color,
+      ));
+    });
+    _scheduleSave();
+  }
+
+  Future<void> _choosePenStyle() async {
+    final selected = await showModalBottomSheet<CanvasPenStyle>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final style in CanvasPenStyle.values)
+              ListTile(
+                leading: Icon(_penIcon(style)),
+                title: Text(_penLabel(style)),
+                trailing: style == _penStyle ? const Icon(Icons.check) : null,
+                onTap: () => Navigator.pop(context, style),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (selected != null) setState(() => _penStyle = selected);
+  }
+
+  IconData _penIcon(CanvasPenStyle style) => switch (style) {
+    CanvasPenStyle.ballpoint => Icons.edit_rounded,
+    CanvasPenStyle.pencil => Icons.create_rounded,
+    CanvasPenStyle.marker => Icons.brush_rounded,
+    CanvasPenStyle.fountain => Icons.format_ink_highlighter_rounded,
+    CanvasPenStyle.dashed => Icons.more_horiz_rounded,
+  };
+
+  String _penLabel(CanvasPenStyle style) => switch (style) {
+    CanvasPenStyle.ballpoint => 'Ballpoint',
+    CanvasPenStyle.pencil => 'Pencil',
+    CanvasPenStyle.marker => 'Marker',
+    CanvasPenStyle.fountain => 'Fountain pen',
+    CanvasPenStyle.dashed => 'Dashed pen',
   }
 
   List<CanvasPoint> _shapePoints(CanvasTool tool, Offset start, Offset end) {
@@ -435,9 +555,12 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
 
   Future<void> _chooseColor() async {
     const colors = [
-      Color(0xFF1F2430), Color(0xFFE53935), Color(0xFFFB8C00),
-      Color(0xFFFDD835), Color(0xFF43A047), Color(0xFF1E88E5),
-      Color(0xFF5E35B1), Color(0xFF00897B), Color(0xFF8D6E63),
+      Color(0xFF111827), Color(0xFF374151), Color(0xFF6B7280), Color(0xFFFFFFFF),
+      Color(0xFFEF4444), Color(0xFFF97316), Color(0xFFF59E0B), Color(0xFFFACC15),
+      Color(0xFF84CC16), Color(0xFF22C55E), Color(0xFF14B8A6), Color(0xFF06B6D4),
+      Color(0xFF0EA5E9), Color(0xFF3B82F6), Color(0xFF6366F1), Color(0xFF8B5CF6),
+      Color(0xFFA855F7), Color(0xFFEC4899), Color(0xFF92400E), Color(0xFF8D6E63),
+      Color(0xFFFDE68A), Color(0xFFA7F3D0), Color(0xFFBAE6FD), Color(0xFFE9D5FF),
     ];
     final selected = await showModalBottomSheet<Color>(
       context: context,
@@ -461,6 +584,53 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
       ),
     );
     if (selected != null) setState(() => _color = selected);
+  }
+
+  Future<void> _choosePaper() async {
+    const papers = [
+      Color(0xFFF8F7F3), Color(0xFFFFFFFF), Color(0xFFFFF8E7), Color(0xFFFFF1F2),
+      Color(0xFFFFF7ED), Color(0xFFFEFCE8), Color(0xFFF0FDF4), Color(0xFFECFEFF),
+      Color(0xFFEFF6FF), Color(0xFFF5F3FF), Color(0xFFFDF4FF), Color(0xFFF3F4F6),
+      Color(0xFF1B1D23), Color(0xFF23252D), Color(0xFF111827),
+    ];
+    final selected = await showModalBottomSheet<Color>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 8, 24, 28),
+          child: Wrap(
+            spacing: 14,
+            runSpacing: 14,
+            children: [
+              for (final paper in papers)
+                InkWell(
+                  onTap: () => Navigator.pop(context, paper),
+                  borderRadius: BorderRadius.circular(28),
+                  child: CircleAvatar(
+                    radius: 25,
+                    backgroundColor: paper,
+                    child: paper == _document.backgroundColor
+                        ? Icon(Icons.check, color: paper.computeLuminance() > .5 ? Colors.black : Colors.white)
+                        : null,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (selected != null) {
+      _pushHistory();
+      setState(() => _document = _document.withPaper(color: selected));
+      _scheduleSave();
+    }
+  }
+
+  void _toggleGrid() {
+    _pushHistory();
+    setState(() => _document = _document.withPaper(grid: !_document.showGrid));
+    _scheduleSave();
   }
 
   void _setZoom(double value) {
@@ -555,6 +725,21 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
                           ? const Icon(Icons.check, size: 14, color: Colors.black)
                           : null,
                     ),
+                  ),
+                  IconButton(
+                    tooltip: 'Pen style',
+                    onPressed: _choosePenStyle,
+                    icon: Icon(_penIcon(_penStyle)),
+                  ),
+                  IconButton(
+                    tooltip: 'Paper color',
+                    onPressed: _choosePaper,
+                    icon: Icon(Icons.article_outlined, color: _document.backgroundColor),
+                  ),
+                  IconButton(
+                    tooltip: _document.showGrid ? 'Hide grid' : 'Show grid',
+                    onPressed: _toggleGrid,
+                    icon: Icon(_document.showGrid ? Icons.grid_4x4_rounded : Icons.grid_off_rounded),
                   ),
                   SizedBox(
                     width: 150,
@@ -669,6 +854,8 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
                       previewTool: _tool,
                       previewStart: _shapeStart,
                       previewCurrent: _shapeCurrent,
+                      selectedIds: _selectedIds,
+                      lassoPoints: _lassoPoints,
                     ),
                   ),
                 ),
@@ -710,6 +897,8 @@ class _CanvasPainter extends CustomPainter {
     required this.previewTool,
     required this.previewStart,
     required this.previewCurrent,
+    required this.selectedIds,
+    required this.lassoPoints,
   });
 
   final CanvasDocument document;
@@ -717,14 +906,39 @@ class _CanvasPainter extends CustomPainter {
   final CanvasTool previewTool;
   final Offset? previewStart;
   final Offset? previewCurrent;
+  final Set<String> selectedIds;
+  final List<Offset> lassoPoints;
 
   @override
   void paint(Canvas canvas, Size size) {
-    _drawGrid(canvas, size);
+    canvas.drawRect(Offset.zero & size, Paint()..color = document.backgroundColor);
+    if (document.showGrid) _drawGrid(canvas, size);
     for (final stroke in document.strokes) {
       _drawStroke(canvas, stroke);
+      if (selectedIds.contains(stroke.id)) {
+        final outline = Paint()
+          ..color = Colors.blueAccent.withValues(alpha: .55)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 3;
+        canvas.drawRect(stroke.bounds.inflate(6), outline);
+      }
+    }
+    for (final text in document.texts) {
+      final painter = TextPainter(
+        text: TextSpan(
+          text: text.text,
+          style: TextStyle(color: text.color, fontSize: text.size, fontWeight: FontWeight.w600),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout(maxWidth: 900);
+      painter.paint(canvas, Offset(text.x, text.y));
     }
     if (activeStroke != null) _drawStroke(canvas, activeStroke!);
+    if (lassoPoints.length >= 2) {
+      final path = Path()..moveTo(lassoPoints.first.dx, lassoPoints.first.dy);
+      for (final p in lassoPoints.skip(1)) { path.lineTo(p.dx, p.dy); }
+      canvas.drawPath(path, Paint()..color = Colors.blueAccent.withValues(alpha: .7)..style = PaintingStyle.stroke..strokeWidth = 2);
+    }
     if (previewStart != null && previewCurrent != null) {
       final points = _previewPoints(previewTool, previewStart!, previewCurrent!);
       if (points.length >= 2) {
@@ -761,15 +975,43 @@ class _CanvasPainter extends CustomPainter {
       final previous = stroke.points[i - 1];
       final current = stroke.points[i];
       final pressure = ((previous.pressure + current.pressure) / 2).clamp(0.1, 1.0);
-      final pressureWidth = stroke.width * (0.55 + pressure * 0.9);
+      final style = stroke.penStyle;
+      final styleWidth = switch (style) {
+        CanvasPenStyle.ballpoint => 1.0,
+        CanvasPenStyle.pencil => .72,
+        CanvasPenStyle.marker => 1.65,
+        CanvasPenStyle.fountain => 1.15,
+        CanvasPenStyle.dashed => 1.0,
+      };
+      final alpha = switch (style) {
+        CanvasPenStyle.pencil => .68,
+        CanvasPenStyle.marker => .52,
+        _ => stroke.opacity,
+      };
+      final pressureWidth = stroke.width * styleWidth * (0.55 + pressure * 0.9);
       final paint = Paint()
-        ..color = stroke.color.withValues(alpha: stroke.opacity)
+        ..color = stroke.color.withValues(alpha: alpha)
         ..style = PaintingStyle.stroke
         ..strokeWidth = pressureWidth
         ..strokeCap = StrokeCap.round
         ..strokeJoin = StrokeJoin.round;
       if (stroke.highlighter) paint.blendMode = BlendMode.multiply;
-      canvas.drawLine(previous.offset, current.offset, paint);
+      if (style == CanvasPenStyle.dashed) {
+        final delta = current.offset - previous.offset;
+        final distance = delta.distance;
+        if (distance > 0) {
+          final unit = delta / distance;
+          const dash = 9.0;
+          const gap = 6.0;
+          for (double d = 0; d < distance; d += dash + gap) {
+            final a = previous.offset + unit * d;
+            final b = previous.offset + unit * math.min(d + dash, distance);
+            canvas.drawLine(a, b, paint);
+          }
+        }
+      } else {
+        canvas.drawLine(previous.offset, current.offset, paint);
+      }
     }
   }
 
