@@ -293,7 +293,7 @@ class _PdfStudioPageState extends State<PdfStudioPage> {
                       },
                       pageOverlaysBuilder: (context, pageRect, page) {
                         final saved = _annotationsByPage[page.pageNumber] ?? const <_PdfInk>[];
-                        final active = page.pageNumber == _currentPage && _activeInk != null ? <_PdfInk>[_activeInk!] : const <_PdfInk>[];
+                        final active = page.pageNumber == _activeInkPage && _activeInk != null ? <_PdfInk>[_activeInk!] : const <_PdfInk>[];
                         return [
                           Positioned.fill(
                             child: Listener(
