@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:pdfrx/pdfrx.dart';
 
 import '../../data/local/atlas_local_store.dart';
+import '../../data/local/atlas_database.dart' as atlas_db;
 import '../../data/local/pdf_repository.dart';
 
 class PdfStudioPage extends StatefulWidget {
@@ -25,7 +26,6 @@ class _PdfStudioPageState extends State<PdfStudioPage> {
   String _name = 'PDF document';
   String? _pdfId;
   _PdfTool _tool = _PdfTool.select;
-  double _strokeWidth = 2.5;
   _PdfInk? _activeInk;
   final Map<int, List<_PdfInk>> _annotationsByPage = {};
   final Map<int, Future<void>> _annotationLoads = {};
@@ -346,7 +346,7 @@ class _PdfInk {
     'points': points.map((p) => p.toJson()).toList(),
   };
 
-  static _PdfInk fromRow(PdfAnnotation row) {
+  static _PdfInk fromRow(atlas_db.PdfAnnotation row) {
     final json = Map<String, dynamic>.from(jsonDecode(row.payloadJson) as Map);
     final raw = json['points'];
     final points = raw is List
