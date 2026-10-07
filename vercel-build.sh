@@ -13,6 +13,7 @@ if [ ! -x "$FLUTTER_DIR/bin/flutter" ]; then
 fi
 
 export PATH="$FLUTTER_DIR/bin:$PATH"
-flutter config --enable-web
+git config --global --add safe.directory "$FLUTTER_DIR" || true
+flutter --version
 flutter pub get
 flutter build web --release
