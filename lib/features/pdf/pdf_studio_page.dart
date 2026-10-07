@@ -27,6 +27,7 @@ class _PdfStudioPageState extends State<PdfStudioPage> {
   String? _pdfId;
   _PdfTool _tool = _PdfTool.select;
   _PdfInk? _activeInk;
+  int? _activeInkPage;
   final Map<int, List<_PdfInk>> _annotationsByPage = {};
   final Map<int, Future<void>> _annotationLoads = {};
   PdfViewerController? _controller;
@@ -123,7 +124,7 @@ class _PdfStudioPageState extends State<PdfStudioPage> {
       kind == PointerDeviceKind.invertedStylus ||
       kind == PointerDeviceKind.mouse;
 
-  void _pointerDown(PointerDownEvent event, Size size) {
+  void _pointerDown(PointerDownEvent event, Size size, int pageNumber) {
     if (_tool == _PdfTool.select || !_drawingPointer(event.kind) || _pdfId == null || size.isEmpty) return;
     final p = event.localPosition;
     final point = _PdfInkPoint(
@@ -132,10 +133,11 @@ class _PdfStudioPageState extends State<PdfStudioPage> {
       event.pressure.isFinite ? event.pressure.clamp(0.1, 1.0) : 1,
     );
     setState(() {
+      _activeInkPage = pageNumber;
       _activeInk = _PdfInk(
         id: 'pdfann_${DateTime.now().microsecondsSinceEpoch}',
         kind: _tool == _PdfTool.highlighter ? 'highlighter' : 'ink',
-        color: _tool == _PdfTool.highlighter ? Colors.yellow.value : Colors.blue.value,
+        color: _tool == _PdfTool.highlighter ? Colors.yellow.toARGB32() : Colors.blue.toARGB32(),
         width: 2.5,
         opacity: _tool == _PdfTool.highlighter ? 0.32 : 1,
         points: [point],
@@ -166,18 +168,20 @@ class _PdfStudioPageState extends State<PdfStudioPage> {
 
   Future<void> _finishInk() async {
     final ink = _activeInk;
-    if (ink == null) return;
+    final pageNumber = _activeInkPage;
+    if (ink == null || pageNumber == null) return;
     setState(() {
       _activeInk = null;
+      _activeInkPage = null;
       if (ink.points.length > 1) {
-        _annotationsByPage[_currentPage] = [...?_annotationsByPage[_currentPage], ink];
+        _annotationsByPage[pageNumber] = [...?_annotationsByPage[_currentPage], ink];
       }
     });
     final id = _pdfId;
     if (id == null || ink.points.length < 2) return;
     await _repository.saveAnnotation(
       pdfId: id,
-      pageNumber: _currentPage,
+      pageNumber: pageNumber,
       kind: ink.kind,
       id: ink.id,
       payload: ink.toPayload(),
@@ -294,7 +298,7 @@ class _PdfStudioPageState extends State<PdfStudioPage> {
                           Positioned.fill(
                             child: Listener(
                               behavior: HitTestBehavior.translucent,
-                              onPointerDown: (e) => _pointerDown(e, pageRect.size),
+                              onPointerDown: (e) => _pointerDown(e, pageRect.size, page.pageNumber),
                               onPointerMove: (e) => _pointerMove(e, pageRect.size),
                               onPointerUp: (_) => unawaited(_finishInk()),
                               onPointerCancel: (_) => unawaited(_finishInk()),
@@ -355,7 +359,7 @@ class _PdfInk {
     return _PdfInk(
       id: row.id,
       kind: row.kind,
-      color: (json['color'] as num?)?.toInt() ?? Colors.blue.value,
+      color: (json['color'] as num?)?.toInt() ?? Colors.blue.toARGB32(),
       width: (json['width'] as num?)?.toDouble() ?? 2.5,
       opacity: (json['opacity'] as num?)?.toDouble() ?? 1,
       points: points,
@@ -377,7 +381,7 @@ class _PdfInkPainter extends CustomPainter {
         path.lineTo(point.x * size.width, point.y * size.height);
       }
       final paint = Paint()
-        ..color = Color(ink.color).withOpacity(ink.opacity)
+        ..color = Color(ink.color).withValues(alpha: ink.opacity)
         ..style = PaintingStyle.stroke
         ..strokeCap = StrokeCap.round
         ..strokeJoin = StrokeJoin.round
