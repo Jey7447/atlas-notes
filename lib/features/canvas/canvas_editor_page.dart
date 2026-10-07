@@ -21,6 +21,7 @@ class CanvasEditorPage extends StatefulWidget {
 }
 
 enum _SelectionInteraction { none, move, resize, rotate }
+enum _SelectionMode { replace, add, subtract }
 
 class _CanvasEditorPageState extends State<CanvasEditorPage> {
   CanvasDocument _document = const CanvasDocument();
@@ -48,6 +49,7 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
   Offset? _selectionStart;
   Offset? _selectionCurrent;
   final Set<String> _selectedIds = <String>{};
+  _SelectionMode _selectionMode = _SelectionMode.replace;
   Offset? _selectionMoveLast;
   bool _movingSelection = false;
   _SelectionInteraction _selectionInteraction = _SelectionInteraction.none;
@@ -619,11 +621,7 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
           .where((t) => t.bounds.overlaps(bounds) || bounds.contains(t.bounds.center))
           .map((t) => t.id),
     };
-    setState(() {
-      _selectedIds
-        ..clear()
-        ..addAll(selected);
-    });
+    _applySelectionSet(selected);
   }
 
   void _selectObjectsInCircle(Rect bounds) {
@@ -643,11 +641,38 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
           .where((t) => inside(t.bounds.center))
           .map((t) => t.id),
     };
+    _applySelectionSet(selected);
+  }
+
+  void _applySelectionSet(Set<String> candidates) {
+    setState(() {
+      switch (_selectionMode) {
+        case _SelectionMode.replace:
+          _selectedIds
+            ..clear()
+            ..addAll(candidates);
+        case _SelectionMode.add:
+          _selectedIds.addAll(candidates);
+        case _SelectionMode.subtract:
+          _selectedIds.removeAll(candidates);
+      }
+    });
+  }
+
+  void _selectAll() {
     setState(() {
       _selectedIds
         ..clear()
-        ..addAll(selected);
+        ..addAll([
+          ..._document.strokes.map((s) => s.id),
+          ..._document.texts.map((t) => t.id),
+        ]);
+      _selectionMode = _SelectionMode.replace;
     });
+  }
+
+  void _setSelectionMode(_SelectionMode mode) {
+    setState(() => _selectionMode = mode);
   }
 
   Rect _boundsOf(List<Offset> points) {
@@ -912,6 +937,7 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
     _activeStroke = null;
     _shapeStart = null;
     _shapeCurrent = null;
+    if (_selectionTool) _selectionMode = _SelectionMode.replace;
   });
 
   @override
@@ -1046,7 +1072,7 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
               ),
             ),
           ),
-          if (_selectedIds.isNotEmpty)
+          if (_selectionTool)
             Material(
               color: theme.colorScheme.surfaceContainerHighest,
               child: SingleChildScrollView(
@@ -1054,14 +1080,30 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 child: Row(
                   children: [
-                    Text(_selectedIds.length.toString() + ' selected', style: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700)),
-                    const SizedBox(width: 10),
-                    IconButton(tooltip: 'Duplicate', onPressed: _duplicateSelection, icon: const Icon(Icons.copy_all_rounded)),
-                    IconButton(tooltip: 'Copy', onPressed: () => _copySelection(), icon: const Icon(Icons.content_copy_rounded)),
-                    IconButton(tooltip: 'Cut', onPressed: () => _copySelection(cut: true), icon: const Icon(Icons.content_cut_rounded)),
+                    Text(
+                      _selectedIds.isEmpty ? 'Selection' : '${_selectedIds.length} selected',
+                      style: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(width: 8),
+                    SegmentedButton<_SelectionMode>(
+                      segments: const [
+                        ButtonSegment(value: _SelectionMode.replace, icon: Icon(Icons.select_all_rounded, size: 18), label: Text('Replace')),
+                        ButtonSegment(value: _SelectionMode.add, icon: Icon(Icons.add_rounded, size: 18), label: Text('Add')),
+                        ButtonSegment(value: _SelectionMode.subtract, icon: Icon(Icons.remove_rounded, size: 18), label: Text('Subtract')),
+                      ],
+                      selected: {_selectionMode},
+                      onSelectionChanged: (values) => _setSelectionMode(values.first),
+                      showSelectedIcon: false,
+                    ),
+                    const SizedBox(width: 8),
+                    OutlinedButton.icon(onPressed: _selectAll, icon: const Icon(Icons.select_all_rounded, size: 18), label: const Text('Select all')),
+                    const SizedBox(width: 4),
+                    IconButton(tooltip: 'Duplicate', onPressed: _selectedIds.isEmpty ? null : _duplicateSelection, icon: const Icon(Icons.copy_all_rounded)),
+                    IconButton(tooltip: 'Copy', onPressed: _selectedIds.isEmpty ? null : () => _copySelection(), icon: const Icon(Icons.content_copy_rounded)),
+                    IconButton(tooltip: 'Cut', onPressed: _selectedIds.isEmpty ? null : () => _copySelection(cut: true), icon: const Icon(Icons.content_cut_rounded)),
                     IconButton(tooltip: 'Paste', onPressed: _pasteSelection, icon: const Icon(Icons.content_paste_rounded)),
-                    IconButton(tooltip: 'Delete', onPressed: _deleteSelection, icon: const Icon(Icons.delete_outline_rounded)),
-                    TextButton.icon(onPressed: () => setState(() => _selectedIds.clear()), icon: const Icon(Icons.close_rounded, size: 18), label: const Text('Deselect')),
+                    IconButton(tooltip: 'Delete', onPressed: _selectedIds.isEmpty ? null : _deleteSelection, icon: const Icon(Icons.delete_outline_rounded)),
+                    TextButton.icon(onPressed: _selectedIds.isEmpty ? null : () => setState(() => _selectedIds.clear()), icon: const Icon(Icons.close_rounded, size: 18), label: const Text('Deselect')),
                   ],
                 ),
               ),
@@ -1198,202 +1240,3 @@ class _CanvasPainter extends CustomPainter {
   final Offset? previewStart;
   final Offset? previewCurrent;
   final Set<String> selectedIds;
-  final List<Offset> lassoPoints;
-  final Offset? selectionStart;
-  final Offset? selectionCurrent;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    canvas.drawRect(Offset.zero & size, Paint()..color = document.backgroundColor);
-    if (document.showGrid) _drawGrid(canvas, size);
-    for (final stroke in document.strokes) {
-      _drawStroke(canvas, stroke);
-    }
-    for (final text in document.texts) {
-      final painter = TextPainter(
-        text: TextSpan(
-          text: text.text,
-          style: TextStyle(color: text.color, fontSize: text.size, fontWeight: FontWeight.w600),
-        ),
-        textDirection: TextDirection.ltr,
-      )..layout(maxWidth: 900);
-      if (text.rotation.abs() < 0.0001) {
-        painter.paint(canvas, Offset(text.x, text.y));
-      } else {
-        canvas.save();
-        final center = text.bounds.center;
-        canvas.translate(center.dx, center.dy);
-        canvas.rotate(text.rotation);
-        canvas.translate(-center.dx, -center.dy);
-        painter.paint(canvas, Offset(text.x, text.y));
-        canvas.restore();
-      }
-    }
-    if (activeStroke != null) _drawStroke(canvas, activeStroke!);
-    final selectedRects = <Rect>[
-      ...document.strokes.where((s) => selectedIds.contains(s.id)).map((s) => s.bounds),
-      ...document.texts.where((t) => selectedIds.contains(t.id)).map((t) => t.bounds),
-    ];
-    if (selectedRects.isNotEmpty) {
-      var selection = selectedRects.first;
-      for (final rect in selectedRects.skip(1)) {
-        selection = selection.expandToInclude(rect);
-      }
-      final box = selection.inflate(10);
-      final outline = Paint()
-        ..color = Colors.blueAccent.withValues(alpha: .85)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.5;
-      canvas.drawRect(box, outline);
-      final handle = Paint()..color = Colors.blueAccent;
-      canvas.drawCircle(box.topLeft, 6, handle);
-      canvas.drawCircle(box.topRight, 6, handle);
-      canvas.drawCircle(box.bottomLeft, 6, handle);
-      canvas.drawCircle(box.bottomRight, 7, handle);
-      final rotateHandle = Offset(box.center.dx, box.top - 34);
-      canvas.drawLine(box.topCenter, rotateHandle, Paint()..color = Colors.blueAccent..strokeWidth = 2);
-      canvas.drawCircle(rotateHandle, 7, handle);
-    }
-
-    if (previewStart != null && previewCurrent != null) {
-      final points = _previewPoints(previewTool, previewStart!, previewCurrent!);
-      if (points.length >= 2) {
-        _drawStroke(
-          canvas,
-          CanvasStroke(
-            id: 'preview',
-            points: points,
-            color: Colors.black54,
-            width: 2,
-            opacity: 0.65,
-          ),
-        );
-      }
-    }
-
-    if (selectionStart != null && selectionCurrent != null) {
-      final selectionPaint = Paint()
-        ..color = Colors.blueAccent.withValues(alpha: .35)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2;
-      if (previewTool == CanvasTool.rectangleSelection) {
-        canvas.drawRect(Rect.fromPoints(selectionStart!, selectionCurrent!), selectionPaint);
-      } else if (previewTool == CanvasTool.circleSelection) {
-        canvas.drawOval(Rect.fromPoints(selectionStart!, selectionCurrent!), selectionPaint);
-      }
-    }
-
-    if (lassoPoints.length >= 2) {
-      final path = Path()..moveTo(lassoPoints.first.dx, lassoPoints.first.dy);
-      for (final p in lassoPoints.skip(1)) { path.lineTo(p.dx, p.dy); }
-      canvas.drawPath(path, Paint()..color = Colors.blueAccent.withValues(alpha: .7)..style = PaintingStyle.stroke..strokeWidth = 2);
-    }
-    if (previewStart != null && previewCurrent != null) {
-      final points = _previewPoints(previewTool, previewStart!, previewCurrent!);
-      if (points.length >= 2) {
-        _drawStroke(
-          canvas,
-          CanvasStroke(
-            id: 'preview',
-            points: points,
-            color: Colors.black54,
-            width: 2,
-            opacity: 0.65,
-          ),
-        );
-      }
-    }
-  }
-
-  void _drawGrid(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = const Color(0x18000000)
-      ..strokeWidth = 1;
-    const spacing = 32.0;
-    for (double x = 0; x < size.width; x += spacing) {
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
-    }
-    for (double y = 0; y < size.height; y += spacing) {
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
-    }
-  }
-
-  void _drawStroke(Canvas canvas, CanvasStroke stroke) {
-    if (stroke.points.length < 2) return;
-    for (var i = 1; i < stroke.points.length; i++) {
-      final previous = stroke.points[i - 1];
-      final current = stroke.points[i];
-      final pressure = ((previous.pressure + current.pressure) / 2).clamp(0.1, 1.0);
-      final style = stroke.penStyle;
-      final styleWidth = switch (style) {
-        CanvasPenStyle.ballpoint => 1.0,
-        CanvasPenStyle.pencil => .72,
-        CanvasPenStyle.marker => 1.65,
-        CanvasPenStyle.fountain => 1.15,
-        CanvasPenStyle.dashed => 1.0,
-      };
-      final alpha = switch (style) {
-        CanvasPenStyle.pencil => .68,
-        CanvasPenStyle.marker => .52,
-        _ => stroke.opacity,
-      };
-      final pressureWidth = stroke.width * styleWidth * (0.55 + pressure * 0.9);
-      final paint = Paint()
-        ..color = stroke.color.withValues(alpha: alpha)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = pressureWidth
-        ..strokeCap = StrokeCap.round
-        ..strokeJoin = StrokeJoin.round;
-      if (stroke.highlighter) paint.blendMode = BlendMode.multiply;
-      if (style == CanvasPenStyle.dashed) {
-        final delta = current.offset - previous.offset;
-        final distance = delta.distance;
-        if (distance > 0) {
-          final unit = delta / distance;
-          const dash = 9.0;
-          const gap = 6.0;
-          for (double d = 0; d < distance; d += dash + gap) {
-            final a = previous.offset + unit * d;
-            final b = previous.offset + unit * math.min(d + dash, distance);
-            canvas.drawLine(a, b, paint);
-          }
-        }
-      } else {
-        canvas.drawLine(previous.offset, current.offset, paint);
-      }
-    }
-  }
-
-  List<CanvasPoint> _previewPoints(
-      CanvasTool tool, Offset start, Offset end) {
-    if (tool == CanvasTool.line) {
-      return [CanvasPoint(start.dx, start.dy), CanvasPoint(end.dx, end.dy)];
-    }
-    final rect = Rect.fromPoints(start, end);
-    if (tool == CanvasTool.rectangle) {
-      return [
-        CanvasPoint(rect.left, rect.top),
-        CanvasPoint(rect.right, rect.top),
-        CanvasPoint(rect.right, rect.bottom),
-        CanvasPoint(rect.left, rect.bottom),
-        CanvasPoint(rect.left, rect.top),
-      ];
-    }
-    if (tool == CanvasTool.ellipse) {
-      final center = rect.center;
-      final rx = rect.width / 2;
-      final ry = rect.height / 2;
-      return List.generate(49, (i) {
-        final angle = i / 48 * math.pi * 2;
-        return CanvasPoint(
-          center.dx + rx * math.cos(angle),
-          center.dy + ry * math.sin(angle),
-        );
-      });
-    }
-    return [];
-  }
-
-  @override
-  bool shouldRepaint(covariant _CanvasPainter oldDelegate) => true;
-}
