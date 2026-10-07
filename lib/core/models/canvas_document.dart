@@ -47,18 +47,42 @@ class CanvasStroke {
 }
 
 class CanvasText {
-  const CanvasText({required this.id, required this.text, required this.x, required this.y, required this.color, this.size = 28});
+  const CanvasText({
+    required this.id,
+    required this.text,
+    required this.x,
+    required this.y,
+    required this.color,
+    this.size = 28,
+    this.rotation = 0,
+  });
   final String id;
   final String text;
   final double x;
   final double y;
   final Color color;
   final double size;
-  CanvasText copyWith({double? x, double? y}) => CanvasText(
-    id: id, text: text, x: x ?? this.x, y: y ?? this.y, color: color, size: size,
+  final double rotation;
+
+  CanvasText copyWith({double? x, double? y, double? size, double? rotation}) => CanvasText(
+    id: id,
+    text: text,
+    x: x ?? this.x,
+    y: y ?? this.y,
+    color: color,
+    size: size ?? this.size,
+    rotation: rotation ?? this.rotation,
   );
-  Rect get bounds => Rect.fromLTWH(x, y, math.max(20, text.length * size * .58), size * 1.25);
-  Map<String,Object> toJson()=>{'id':id,'text':text,'x':x,'y':y,'color':color.toARGB32(),'size':size};
+
+  Rect get bounds => Rect.fromLTWH(
+    x, y, math.max(20, text.length * size * .58), size * 1.25,
+  );
+
+  Map<String,Object> toJson()=>{
+    'id':id, 'text':text, 'x':x, 'y':y, 'color':color.toARGB32(),
+    'size':size, 'rotation':rotation,
+  };
+
   factory CanvasText.fromJson(Map<String,dynamic> json)=>CanvasText(
     id:json['id'] as String,
     text:json['text'] as String,
@@ -66,6 +90,7 @@ class CanvasText {
     y:(json['y'] as num).toDouble(),
     color:Color((json['color'] as num).toInt()),
     size:(json['size'] as num?)?.toDouble() ?? 28,
+    rotation:(json['rotation'] as num?)?.toDouble() ?? 0,
   );
 }
 
@@ -95,9 +120,97 @@ class CanvasDocument {
       for (final text in texts)
         ids.contains(text.id) ? text.copyWith(x: text.x + delta.dx, y: text.y + delta.dy) : text,
     ],
-    paperColor: paperColor,
-    showGrid: showGrid,
+    paperColor: paperColor, showGrid: showGrid,
   );
+
+  CanvasDocument scaleIds(Set<String> ids, Rect from, Rect to) {
+    final sx = from.width.abs() < 0.01 ? 1.0 : to.width / from.width;
+    final sy = from.height.abs() < 0.01 ? 1.0 : to.height / from.height;
+    final dx = to.left - from.left * sx;
+    final dy = to.top - from.top * sy;
+    final textScale = ((sx.abs() + sy.abs()) / 2).clamp(0.1, 8.0);
+    return CanvasDocument(
+      strokes: [
+        for (final stroke in strokes)
+          if (ids.contains(stroke.id))
+            stroke.copyWith(points: [
+              for (final p in stroke.points)
+                CanvasPoint(p.x * sx + dx, p.y * sy + dy, pressure: p.pressure),
+            ])
+          else stroke,
+      ],
+      texts: [
+        for (final text in texts)
+          if (ids.contains(text.id))
+            text.copyWith(x: text.x * sx + dx, y: text.y * sy + dy, size: (text.size * textScale).clamp(8.0, 240.0))
+          else text,
+      ],
+      paperColor: paperColor, showGrid: showGrid,
+    );
+  }
+
+  CanvasDocument rotateIds(Set<String> ids, double angle, Offset center) {
+    Offset rotate(Offset point) {
+      final dx = point.dx - center.dx;
+      final dy = point.dy - center.dy;
+      final cosA = math.cos(angle);
+      final sinA = math.sin(angle);
+      return Offset(center.dx + dx * cosA - dy * sinA, center.dy + dx * sinA + dy * cosA);
+    }
+    return CanvasDocument(
+      strokes: [
+        for (final stroke in strokes)
+          if (ids.contains(stroke.id))
+            stroke.copyWith(points: [
+              for (final p in stroke.points)
+                (() { final r = rotate(p.offset); return CanvasPoint(r.dx, r.dy, pressure: p.pressure); })(),
+            ])
+          else stroke,
+      ],
+      texts: [
+        for (final text in texts)
+          if (ids.contains(text.id))
+            (() {
+              final r = rotate(text.bounds.center);
+              return text.copyWith(x: r.dx - text.bounds.width / 2, y: r.dy - text.bounds.height / 2, rotation: text.rotation + angle);
+            })()
+          else text,
+      ],
+      paperColor: paperColor, showGrid: showGrid,
+    );
+  }
+
+  CanvasDocument removeIds(Set<String> ids) => CanvasDocument(
+    strokes: strokes.where((s) => !ids.contains(s.id)).toList(),
+    texts: texts.where((t) => !ids.contains(t.id)).toList(),
+    paperColor: paperColor, showGrid: showGrid,
+  );
+
+  CanvasDocument duplicateIds(Set<String> ids, {Offset delta = const Offset(24, 24)}) {
+    final suffix = DateTime.now().microsecondsSinceEpoch;
+    return CanvasDocument(
+      strokes: [
+        ...strokes,
+        for (final stroke in strokes.where((s) => ids.contains(s.id)))
+          CanvasStroke(
+            id: stroke.id + '_copy_' + suffix.toString(),
+            points: [for (final p in stroke.points) CanvasPoint(p.x + delta.dx, p.y + delta.dy, pressure: p.pressure)],
+            color: stroke.color, width: stroke.width, opacity: stroke.opacity,
+            highlighter: stroke.highlighter, penStyle: stroke.penStyle,
+          ),
+      ],
+      texts: [
+        ...texts,
+        for (final text in texts.where((t) => ids.contains(t.id)))
+          CanvasText(
+            id: text.id + '_copy_' + suffix.toString(),
+            text: text.text, x: text.x + delta.dx, y: text.y + delta.dy,
+            color: text.color, size: text.size, rotation: text.rotation,
+          ),
+      ],
+      paperColor: paperColor, showGrid: showGrid,
+    );
+  }
   Map<String,Object> toJson()=>{'strokes':strokes.map((s)=>s.toJson()).toList(),'texts':texts.map((t)=>t.toJson()).toList(),'paperColor':paperColor,'showGrid':showGrid};
   factory CanvasDocument.fromJson(Map<String,dynamic> json)=>CanvasDocument(
     strokes:(json['strokes'] as List<dynamic>? ?? const []).map((s)=>CanvasStroke.fromJson(s as Map<String,dynamic>)).toList(),
