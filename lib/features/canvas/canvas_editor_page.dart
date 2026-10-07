@@ -1148,7 +1148,17 @@ class _CanvasPainter extends CustomPainter {
         ),
         textDirection: TextDirection.ltr,
       )..layout(maxWidth: 900);
-      painter.paint(canvas, Offset(text.x, text.y));
+      if (text.rotation.abs() < 0.0001) {
+        painter.paint(canvas, Offset(text.x, text.y));
+      } else {
+        canvas.save();
+        final center = text.bounds.center;
+        canvas.translate(center.dx, center.dy);
+        canvas.rotate(text.rotation);
+        canvas.translate(-center.dx, -center.dy);
+        painter.paint(canvas, Offset(text.x, text.y));
+        canvas.restore();
+      }
     }
     if (activeStroke != null) _drawStroke(canvas, activeStroke!);
     final selectedRects = <Rect>[
@@ -1167,10 +1177,13 @@ class _CanvasPainter extends CustomPainter {
         ..strokeWidth = 2.5;
       canvas.drawRect(box, outline);
       final handle = Paint()..color = Colors.blueAccent;
-      canvas.drawCircle(box.topLeft, 5, handle);
-      canvas.drawCircle(box.topRight, 5, handle);
-      canvas.drawCircle(box.bottomLeft, 5, handle);
-      canvas.drawCircle(box.bottomRight, 5, handle);
+      canvas.drawCircle(box.topLeft, 6, handle);
+      canvas.drawCircle(box.topRight, 6, handle);
+      canvas.drawCircle(box.bottomLeft, 6, handle);
+      canvas.drawCircle(box.bottomRight, 7, handle);
+      final rotateHandle = Offset(box.center.dx, box.top - 34);
+      canvas.drawLine(box.topCenter, rotateHandle, Paint()..color = Colors.blueAccent..strokeWidth = 2);
+      canvas.drawCircle(rotateHandle, 7, handle);
     }
 
     if (lassoPoints.length >= 2) {
