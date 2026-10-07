@@ -1,0 +1,20 @@
+{
+  "buildCommand": "bash vercel-build.sh",
+  "outputDirectory": "build/web",
+  "framework": null,
+  "cleanUrls": true,
+  "headers": [
+    {
+      "source": "/flutter_bootstrap.js",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
+      ]
+    },
+    {
+      "source": "/index.html",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
+      ]
+    }
+  ]
+}
