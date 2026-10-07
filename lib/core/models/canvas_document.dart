@@ -95,13 +95,14 @@ class CanvasText {
 }
 
 class CanvasDocument {
-  const CanvasDocument({this.strokes=const [],this.texts=const [],this.paperColor=0xFFF8F7F3,this.showGrid=true});
+  const CanvasDocument({this.strokes=const [],this.texts=const [],this.paperColor=0xFFF8F7F3,this.showGrid=true,this.lockedIds=const <String>{}});
   final List<CanvasStroke> strokes;
   final List<CanvasText> texts;
   final int paperColor;
   final bool showGrid;
+  final Set<String> lockedIds;
   Color get backgroundColor => Color(paperColor);
-  CanvasDocument add(CanvasStroke stroke)=>CanvasDocument(strokes:[...strokes,stroke],texts:texts,paperColor:paperColor,showGrid:showGrid);
+  CanvasDocument add(CanvasStroke stroke)=>CanvasDocument(strokes:[...strokes,stroke],texts:texts,paperColor:paperColor,showGrid:showGrid,lockedIds:lockedIds);
   CanvasDocument addText(CanvasText text)=>CanvasDocument(strokes:strokes,texts:[...texts,text],paperColor:paperColor,showGrid:showGrid);
   CanvasDocument remove(String id)=>CanvasDocument(strokes:strokes.where((s)=>s.id!=id).toList(),texts:texts,paperColor:paperColor,showGrid:showGrid);
   CanvasDocument clear()=>CanvasDocument(paperColor:paperColor,showGrid:showGrid);
@@ -120,7 +121,7 @@ class CanvasDocument {
       for (final text in texts)
         ids.contains(text.id) ? text.copyWith(x: text.x + delta.dx, y: text.y + delta.dy) : text,
     ],
-    paperColor: paperColor, showGrid: showGrid,
+    paperColor: paperColor, showGrid: showGrid, lockedIds: lockedIds,
   );
 
   CanvasDocument scaleIds(Set<String> ids, Rect from, Rect to) {
@@ -186,6 +187,9 @@ class CanvasDocument {
     paperColor: paperColor, showGrid: showGrid,
   );
 
+  CanvasDocument lockIds(Set<String> ids) => CanvasDocument(strokes: strokes, texts: texts, paperColor: paperColor, showGrid: showGrid, lockedIds: {...lockedIds, ...ids});
+  CanvasDocument unlockIds(Set<String> ids) => CanvasDocument(strokes: strokes, texts: texts, paperColor: paperColor, showGrid: showGrid, lockedIds: lockedIds.difference(ids));
+
   CanvasDocument duplicateIds(Set<String> ids, {Offset delta = const Offset(24, 24)}) {
     final suffix = DateTime.now().microsecondsSinceEpoch;
     return CanvasDocument(
@@ -211,11 +215,12 @@ class CanvasDocument {
       paperColor: paperColor, showGrid: showGrid,
     );
   }
-  Map<String,Object> toJson()=>{'strokes':strokes.map((s)=>s.toJson()).toList(),'texts':texts.map((t)=>t.toJson()).toList(),'paperColor':paperColor,'showGrid':showGrid};
+  Map<String,Object> toJson()=>{'strokes':strokes.map((s)=>s.toJson()).toList(),'texts':texts.map((t)=>t.toJson()).toList(),'paperColor':paperColor,'showGrid':showGrid,'lockedIds':lockedIds.toList()};
   factory CanvasDocument.fromJson(Map<String,dynamic> json)=>CanvasDocument(
     strokes:(json['strokes'] as List<dynamic>? ?? const []).map((s)=>CanvasStroke.fromJson(s as Map<String,dynamic>)).toList(),
     texts:(json['texts'] as List<dynamic>? ?? const []).map((t)=>CanvasText.fromJson(t as Map<String,dynamic>)).toList(),
     paperColor:(json['paperColor'] as num?)?.toInt() ?? 0xFFF8F7F3,
     showGrid:json['showGrid'] as bool? ?? true,
+    lockedIds:(json['lockedIds'] as List<dynamic>? ?? const []).whereType<String>().toSet(),
   );
 }
