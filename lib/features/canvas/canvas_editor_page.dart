@@ -45,6 +45,8 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
   Offset? _shapeStart;
   Offset? _shapeCurrent;
   final List<Offset> _lassoPoints = [];
+  Offset? _selectionStart;
+  Offset? _selectionCurrent;
   final Set<String> _selectedIds = <String>{};
   Offset? _selectionMoveLast;
   bool _movingSelection = false;
@@ -235,6 +237,11 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
   bool get _drawingTool =>
       _tool == CanvasTool.pen || _tool == CanvasTool.highlighter;
 
+  bool get _selectionTool =>
+      _tool == CanvasTool.lasso ||
+      _tool == CanvasTool.rectangleSelection ||
+      _tool == CanvasTool.circleSelection;
+
   void _pushHistory() {
     _undo.add(_document);
     if (_undo.length > 80) _undo.removeAt(0);
@@ -384,7 +391,7 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
 
   void _pointerDown(PointerDownEvent event) {
     final point = _canvasPosition(event);
-    if (_tool == CanvasTool.lasso) {
+    if (_selectionTool) {
       final selectionBounds = _selectionBounds;
       final resizeHandle = _resizeHandle;
       final rotateHandle = _rotateHandle;
@@ -403,7 +410,11 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
         }
       }
       setState(() {
-        _lassoPoints..clear()..add(point);
+        _lassoPoints
+          ..clear()
+          ..add(point);
+        _selectionStart = point;
+        _selectionCurrent = point;
         _selectedIds.clear();
         _selectionInteraction = _SelectionInteraction.none;
         _selectionStartDocument = null;
@@ -423,7 +434,7 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
       _eraseAt(point);
       return;
     }
-    if (_tool == CanvasTool.lasso || _tool == CanvasTool.text) return;
+    if (_selectionTool || _tool == CanvasTool.text) return;
 
     if (_tool == CanvasTool.line ||
         _tool == CanvasTool.rectangle ||
@@ -455,7 +466,7 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
 
   void _pointerMove(PointerMoveEvent event) {
     final point = _canvasPosition(event);
-    if (_tool == CanvasTool.lasso) {
+    if (_selectionTool) {
       final startDocument = _selectionStartDocument;
       final startBounds = _selectionStartBounds;
       final startPoint = _selectionStartPoint;
@@ -470,18 +481,25 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
             });
           }
         }
-      } else if (_selectionInteraction == _SelectionInteraction.resize && startDocument != null && startBounds != null) {
+      } else if (_selectionInteraction == _SelectionInteraction.resize &&
+          startDocument != null && startBounds != null) {
         final width = math.max(24.0, point.dx - startBounds.left).toDouble();
         final height = math.max(24.0, point.dy - startBounds.top).toDouble();
         final target = Rect.fromLTWH(startBounds.left, startBounds.top, width, height);
         setState(() => _document = startDocument.scaleIds(_selectedIds, startBounds, target));
-      } else if (_selectionInteraction == _SelectionInteraction.rotate && startDocument != null && startBounds != null && startPoint != null) {
+      } else if (_selectionInteraction == _SelectionInteraction.rotate &&
+          startDocument != null && startBounds != null && startPoint != null) {
         final center = startBounds.center;
         final startAngle = math.atan2(startPoint.dy - center.dy, startPoint.dx - center.dx);
         final currentAngle = math.atan2(point.dy - center.dy, point.dx - center.dx);
         setState(() => _document = startDocument.rotateIds(_selectedIds, currentAngle - startAngle, center));
       } else {
-        setState(() => _lassoPoints.add(point));
+        setState(() {
+          _selectionCurrent = point;
+          if (_tool == CanvasTool.lasso) {
+            _lassoPoints.add(point);
+          }
+        });
       }
       return;
     }
@@ -509,26 +527,27 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
   }
 
   void _pointerUp(PointerUpEvent event) {
-    if (_tool == CanvasTool.lasso) {
+    if (_selectionTool) {
       if (_selectionInteraction != _SelectionInteraction.none) {
         _finishSelectionTransform();
         return;
       }
-      final points = List<Offset>.from(_lassoPoints);
+
+      final start = _selectionStart;
+      final current = _selectionCurrent ?? (_lassoPoints.isNotEmpty ? _lassoPoints.last : null);
+      final lasso = List<Offset>.from(_lassoPoints);
+      _selectionStart = null;
+      _selectionCurrent = null;
       _lassoPoints.clear();
-      if (points.length >= 3) {
-        final bounds = _boundsOf(points);
-        final selected = <String>{
-          ..._document.strokes
-              .where((s) => s.bounds.overlaps(bounds) || bounds.contains(s.bounds.center))
-              .map((s) => s.id),
-          ..._document.texts
-              .where((t) => t.bounds.overlaps(bounds) || bounds.contains(t.bounds.center))
-              .map((t) => t.id),
-        };
-        setState(() {
-          _selectedIds..clear()..addAll(selected);
-        });
+
+      if (_tool == CanvasTool.lasso && lasso.length >= 3) {
+        final bounds = _boundsOf(lasso);
+        _selectObjectsInBounds(bounds);
+      } else if (_tool == CanvasTool.rectangleSelection && start != null && current != null) {
+        _selectObjectsInBounds(Rect.fromPoints(start, current));
+      } else if (_tool == CanvasTool.circleSelection && start != null && current != null) {
+        final bounds = Rect.fromPoints(start, current);
+        _selectObjectsInCircle(bounds);
       }
       return;
     }
@@ -571,6 +590,8 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
       _shapeStart = null;
       _shapeCurrent = null;
       _lassoPoints.clear();
+      _selectionStart = null;
+      _selectionCurrent = null;
       _selectionMoveLast = null;
       _movingSelection = false;
     });
@@ -587,6 +608,46 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
       result = result.expandToInclude(rect);
     }
     return result.inflate(10);
+  }
+
+  void _selectObjectsInBounds(Rect bounds) {
+    final selected = <String>{
+      ..._document.strokes
+          .where((s) => s.bounds.overlaps(bounds) || bounds.contains(s.bounds.center))
+          .map((s) => s.id),
+      ..._document.texts
+          .where((t) => t.bounds.overlaps(bounds) || bounds.contains(t.bounds.center))
+          .map((t) => t.id),
+    };
+    setState(() {
+      _selectedIds
+        ..clear()
+        ..addAll(selected);
+    });
+  }
+
+  void _selectObjectsInCircle(Rect bounds) {
+    final center = bounds.center;
+    final radiusX = math.max(bounds.width / 2, 1);
+    final radiusY = math.max(bounds.height / 2, 1);
+    bool inside(Offset point) {
+      final dx = (point.dx - center.dx) / radiusX;
+      final dy = (point.dy - center.dy) / radiusY;
+      return dx * dx + dy * dy <= 1;
+    }
+    final selected = <String>{
+      ..._document.strokes
+          .where((s) => inside(s.bounds.center))
+          .map((s) => s.id),
+      ..._document.texts
+          .where((t) => inside(t.bounds.center))
+          .map((t) => t.id),
+    };
+    setState(() {
+      _selectedIds
+        ..clear()
+        ..addAll(selected);
+    });
   }
 
   Rect _boundsOf(List<Offset> points) {
@@ -913,11 +974,13 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
                       'Highlighter'),
                   _toolButton(CanvasTool.eraser, Icons.auto_fix_normal_rounded,
                       'Eraser'),
+                  _toolButton(CanvasTool.lasso, Icons.gesture_rounded, 'Freehand Lasso'),
+                  _toolButton(CanvasTool.rectangleSelection, Icons.select_all_rounded, 'Rectangle Selection'),
+                  _toolButton(CanvasTool.circleSelection, Icons.circle_outlined, 'Circle Selection'),
                   _toolButton(CanvasTool.line, Icons.show_chart_rounded, 'Line'),
                   _toolButton(CanvasTool.rectangle, Icons.crop_square_rounded,
                       'Rectangle'),
                   _toolButton(CanvasTool.ellipse, Icons.circle_outlined, 'Ellipse'),
-                  _toolButton(CanvasTool.lasso, Icons.gesture_rounded, 'Lasso'),
                   const SizedBox(width: 8),
                   IconButton(
                     tooltip: 'Ink color',
@@ -1055,7 +1118,7 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
                 boundaryMargin: const EdgeInsets.all(1000),
                 minScale: 0.5,
                 maxScale: 3.0,
-                panEnabled: !(_drawingTool || _tool == CanvasTool.eraser || _tool == CanvasTool.lasso || _tool == CanvasTool.text || _tool == CanvasTool.line || _tool == CanvasTool.rectangle || _tool == CanvasTool.ellipse),
+                panEnabled: !(_drawingTool || _tool == CanvasTool.eraser || _selectionTool || _tool == CanvasTool.text || _tool == CanvasTool.line || _tool == CanvasTool.rectangle || _tool == CanvasTool.ellipse),
                 scaleEnabled: true,
                 clipBehavior: Clip.none,
                 onInteractionUpdate: (_) {
@@ -1080,6 +1143,8 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
                       previewCurrent: _shapeCurrent,
                       selectedIds: _selectedIds,
                       lassoPoints: _lassoPoints,
+                      selectionStart: _selectionStart,
+                      selectionCurrent: _selectionCurrent,
                     ),
                   ),
                 ),
@@ -1123,6 +1188,8 @@ class _CanvasPainter extends CustomPainter {
     required this.previewCurrent,
     required this.selectedIds,
     required this.lassoPoints,
+    required this.selectionStart,
+    required this.selectionCurrent,
   });
 
   final CanvasDocument document;
@@ -1132,6 +1199,8 @@ class _CanvasPainter extends CustomPainter {
   final Offset? previewCurrent;
   final Set<String> selectedIds;
   final List<Offset> lassoPoints;
+  final Offset? selectionStart;
+  final Offset? selectionCurrent;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1184,6 +1253,34 @@ class _CanvasPainter extends CustomPainter {
       final rotateHandle = Offset(box.center.dx, box.top - 34);
       canvas.drawLine(box.topCenter, rotateHandle, Paint()..color = Colors.blueAccent..strokeWidth = 2);
       canvas.drawCircle(rotateHandle, 7, handle);
+    }
+
+    if (previewStart != null && previewCurrent != null) {
+      final points = _previewPoints(previewTool, previewStart!, previewCurrent!);
+      if (points.length >= 2) {
+        _drawStroke(
+          canvas,
+          CanvasStroke(
+            id: 'preview',
+            points: points,
+            color: Colors.black54,
+            width: 2,
+            opacity: 0.65,
+          ),
+        );
+      }
+    }
+
+    if (selectionStart != null && selectionCurrent != null) {
+      final selectionPaint = Paint()
+        ..color = Colors.blueAccent.withValues(alpha: .35)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2;
+      if (previewTool == CanvasTool.rectangleSelection) {
+        canvas.drawRect(Rect.fromPoints(selectionStart!, selectionCurrent!), selectionPaint);
+      } else if (previewTool == CanvasTool.circleSelection) {
+        canvas.drawOval(Rect.fromPoints(selectionStart!, selectionCurrent!), selectionPaint);
+      }
     }
 
     if (lassoPoints.length >= 2) {
