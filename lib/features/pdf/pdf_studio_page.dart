@@ -7,6 +7,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:pdfrx/pdfrx.dart';
 
+import '../../data/local/atlas_database.dart' as atlas_db;
 import '../../data/local/atlas_local_store.dart';
 import '../../data/local/pdf_repository.dart';
 
@@ -25,8 +26,8 @@ class _PdfStudioPageState extends State<PdfStudioPage> {
   String _name = 'PDF document';
   String? _pdfId;
   _PdfTool _tool = _PdfTool.select;
-  double _strokeWidth = 2.5;
   _PdfInk? _activeInk;
+  int? _activeInkPage;
   final Map<int, List<_PdfInk>> _annotationsByPage = {};
   final Map<int, Future<void>> _annotationLoads = {};
   PdfViewerController? _controller;
@@ -123,7 +124,7 @@ class _PdfStudioPageState extends State<PdfStudioPage> {
       kind == PointerDeviceKind.invertedStylus ||
       kind == PointerDeviceKind.mouse;
 
-  void _pointerDown(PointerDownEvent event, Size size) {
+  void _pointerDown(PointerDownEvent event, Size size, int pageNumber) {
     if (_tool == _PdfTool.select || !_drawingPointer(event.kind) || _pdfId == null || size.isEmpty) return;
     final p = event.localPosition;
     final point = _PdfInkPoint(
@@ -132,6 +133,7 @@ class _PdfStudioPageState extends State<PdfStudioPage> {
       event.pressure.isFinite ? event.pressure.clamp(0.1, 1.0) : 1,
     );
     setState(() {
+      _activeInkPage = pageNumber;
       _activeInk = _PdfInk(
         id: 'pdfann_${DateTime.now().microsecondsSinceEpoch}',
         kind: _tool == _PdfTool.highlighter ? 'highlighter' : 'ink',
@@ -166,18 +168,20 @@ class _PdfStudioPageState extends State<PdfStudioPage> {
 
   Future<void> _finishInk() async {
     final ink = _activeInk;
-    if (ink == null) return;
+    final pageNumber = _activeInkPage;
+    if (ink == null || pageNumber == null) return;
     setState(() {
       _activeInk = null;
+      _activeInkPage = null;
       if (ink.points.length > 1) {
-        _annotationsByPage[_currentPage] = [...?_annotationsByPage[_currentPage], ink];
+        _annotationsByPage[pageNumber] = [...?_annotationsByPage[pageNumber], ink];
       }
     });
     final id = _pdfId;
     if (id == null || ink.points.length < 2) return;
     await _repository.saveAnnotation(
       pdfId: id,
-      pageNumber: _currentPage,
+      pageNumber: pageNumber,
       kind: ink.kind,
       id: ink.id,
       payload: ink.toPayload(),
@@ -294,7 +298,7 @@ class _PdfStudioPageState extends State<PdfStudioPage> {
                           Positioned.fill(
                             child: Listener(
                               behavior: HitTestBehavior.translucent,
-                              onPointerDown: (e) => _pointerDown(e, pageRect.size),
+                              onPointerDown: (e) => _pointerDown(e, pageRect.size, page.pageNumber),
                               onPointerMove: (e) => _pointerMove(e, pageRect.size),
                               onPointerUp: (_) => unawaited(_finishInk()),
                               onPointerCancel: (_) => unawaited(_finishInk()),
@@ -346,7 +350,7 @@ class _PdfInk {
     'points': points.map((p) => p.toJson()).toList(),
   };
 
-  static _PdfInk fromRow(PdfAnnotation row) {
+  static _PdfInk fromRow(atlas_db.PdfAnnotation row) {
     final json = Map<String, dynamic>.from(jsonDecode(row.payloadJson) as Map);
     final raw = json['points'];
     final points = raw is List
