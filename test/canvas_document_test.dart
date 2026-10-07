@@ -28,7 +28,7 @@ void main() {
       expect(restored.strokes.first.points, hasLength(2));
       expect(restored.strokes.first.points.last.x, 30);
       expect(restored.strokes.first.points.last.pressure, 1);
-      expect(restored.strokes.first.color.value, 0xFF112233);
+      expect(restored.strokes.first.color.toARGB32(), 0xFF112233);
       expect(restored.strokes.first.width, 4);
       expect(restored.strokes.first.opacity, 0.7);
       expect(restored.strokes.first.highlighter, isTrue);
