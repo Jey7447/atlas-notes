@@ -983,6 +983,26 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
               ),
             ),
           ),
+          if (_selectedIds.isNotEmpty)
+            Material(
+              color: theme.colorScheme.surfaceContainerHighest,
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                child: Row(
+                  children: [
+                    Text(_selectedIds.length.toString() + ' selected', style: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700)),
+                    const SizedBox(width: 10),
+                    IconButton(tooltip: 'Duplicate', onPressed: _duplicateSelection, icon: const Icon(Icons.copy_all_rounded)),
+                    IconButton(tooltip: 'Copy', onPressed: () => _copySelection(), icon: const Icon(Icons.content_copy_rounded)),
+                    IconButton(tooltip: 'Cut', onPressed: () => _copySelection(cut: true), icon: const Icon(Icons.content_cut_rounded)),
+                    IconButton(tooltip: 'Paste', onPressed: _pasteSelection, icon: const Icon(Icons.content_paste_rounded)),
+                    IconButton(tooltip: 'Delete', onPressed: _deleteSelection, icon: const Icon(Icons.delete_outline_rounded)),
+                    TextButton.icon(onPressed: () => setState(() => _selectedIds.clear()), icon: const Icon(Icons.close_rounded, size: 18), label: const Text('Deselect')),
+                  ],
+                ),
+              ),
+            ),
           if (!_loading && _noteId != null)
             StreamBuilder<List<atlas_db.Page>>(
               stream: _notebookRepository.watchPages(_noteId!),
