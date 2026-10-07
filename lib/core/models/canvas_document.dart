@@ -32,7 +32,7 @@ class CanvasStroke {
     final pad=width/2;
     return Rect.fromLTRB(minX-pad,minY-pad,maxX+pad,maxY+pad);
   }
-  Map<String,Object> toJson()=>{'id':id,'points':points.map((p)=>p.toJson()).toList(),'color':color.value,'width':width,'opacity':opacity,'highlighter':highlighter};
+  Map<String,Object> toJson()=>{'id':id,'points':points.map((p)=>p.toJson()).toList(),'color':color.toARGB32(),'width':width,'opacity':opacity,'highlighter':highlighter};
   factory CanvasStroke.fromJson(Map<String,dynamic> json)=>CanvasStroke(
     id:json['id'] as String,
     points:(json['points'] as List<dynamic>).map((p)=>CanvasPoint.fromJson(p as Map<String,dynamic>)).toList(),
