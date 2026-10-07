@@ -56,5 +56,26 @@ void main() {
 
       expect(result.strokes.map((stroke) => stroke.id), ['b']);
     });
+    test('moves selected strokes and text together', () {
+      const document = CanvasDocument(
+        strokes: [
+          CanvasStroke(
+            id: 'stroke-1',
+            points: [CanvasPoint(10, 20), CanvasPoint(20, 30)],
+            color: Color(0xFF000000),
+            width: 2,
+          ),
+        ],
+        texts: [
+          CanvasText(id: 'text-1', text: 'Hello', x: 40, y: 50, color: Color(0xFF000000)),
+        ],
+      );
+
+      final moved = document.translateIds({'stroke-1', 'text-1'}, const Offset(15, -5));
+
+      expect(moved.strokes.first.points.first.offset, const Offset(25, 15));
+      expect(moved.texts.first.x, 55);
+      expect(moved.texts.first.y, 45);
+    });
   });
 }
