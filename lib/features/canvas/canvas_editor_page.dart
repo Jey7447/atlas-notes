@@ -43,6 +43,8 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
   Offset? _shapeCurrent;
   final List<Offset> _lassoPoints = [];
   final Set<String> _selectedIds = <String>{};
+  Offset? _selectionMoveLast;
+  bool _movingSelection = false;
 
   @override
   void initState() {
@@ -255,10 +257,23 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
   void _pointerDown(PointerDownEvent event) {
     final point = _canvasPosition(event);
     if (_tool == CanvasTool.lasso) {
-      setState(() {
-        _lassoPoints..clear()..add(point);
-        _selectedIds.clear();
-      });
+      final selectionBounds = _selectionBounds;
+      if (_selectedIds.isNotEmpty &&
+          selectionBounds != null &&
+          selectionBounds.inflate(18).contains(point)) {
+        _pushHistory();
+        setState(() {
+          _movingSelection = true;
+          _selectionMoveLast = point;
+        });
+      } else {
+        setState(() {
+          _lassoPoints..clear()..add(point);
+          _selectedIds.clear();
+          _selectionMoveLast = null;
+          _movingSelection = false;
+        });
+      }
       return;
     }
     if (_tool == CanvasTool.text) {
@@ -303,7 +318,20 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
   void _pointerMove(PointerMoveEvent event) {
     final point = _canvasPosition(event);
     if (_tool == CanvasTool.lasso) {
-      setState(() => _lassoPoints.add(point));
+      if (_movingSelection) {
+        final last = _selectionMoveLast;
+        if (last != null) {
+          final delta = point - last;
+          if (delta != Offset.zero) {
+            setState(() {
+              _document = _document.translateIds(_selectedIds, delta);
+              _selectionMoveLast = point;
+            });
+          }
+        }
+      } else {
+        setState(() => _lassoPoints.add(point));
+      }
       return;
     }
 
@@ -331,14 +359,26 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
 
   void _pointerUp(PointerUpEvent event) {
     if (_tool == CanvasTool.lasso) {
+      if (_movingSelection) {
+        setState(() {
+          _movingSelection = false;
+          _selectionMoveLast = null;
+        });
+        _scheduleSave();
+        return;
+      }
       final points = List<Offset>.from(_lassoPoints);
       _lassoPoints.clear();
       if (points.length >= 3) {
         final bounds = _boundsOf(points);
-        final selected = _document.strokes
-            .where((s) => s.bounds.overlaps(bounds) || bounds.contains(s.bounds.center))
-            .map((s) => s.id)
-            .toSet();
+        final selected = <String>{
+          ..._document.strokes
+              .where((s) => s.bounds.overlaps(bounds) || bounds.contains(s.bounds.center))
+              .map((s) => s.id),
+          ..._document.texts
+              .where((t) => t.bounds.overlaps(bounds) || bounds.contains(t.bounds.center))
+              .map((t) => t.id),
+        };
         setState(() {
           _selectedIds..clear()..addAll(selected);
         });
@@ -384,7 +424,22 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
       _shapeStart = null;
       _shapeCurrent = null;
       _lassoPoints.clear();
+      _selectionMoveLast = null;
+      _movingSelection = false;
     });
+  }
+
+  Rect? get _selectionBounds {
+    final rects = <Rect>[
+      ..._document.strokes.where((s) => _selectedIds.contains(s.id)).map((s) => s.bounds),
+      ..._document.texts.where((t) => _selectedIds.contains(t.id)).map((t) => t.bounds),
+    ];
+    if (rects.isEmpty) return null;
+    var result = rects.first;
+    for (final rect in rects.skip(1)) {
+      result = result.expandToInclude(rect);
+    }
+    return result.inflate(10);
   }
 
   Rect _boundsOf(List<Offset> points) {
