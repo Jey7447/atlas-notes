@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
-enum CanvasTool { pen, highlighter, eraser, lasso, line, rectangle, ellipse, text }
+enum CanvasTool { pen, highlighter, eraser, lasso, rectangleSelection, circleSelection, line, rectangle, ellipse, text }
 enum CanvasPenStyle { ballpoint, pencil, marker, fountain, dashed }
 
 class CanvasPoint {
