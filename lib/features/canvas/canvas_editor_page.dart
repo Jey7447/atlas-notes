@@ -972,13 +972,6 @@ class _CanvasPainter extends CustomPainter {
     if (document.showGrid) _drawGrid(canvas, size);
     for (final stroke in document.strokes) {
       _drawStroke(canvas, stroke);
-      if (selectedIds.contains(stroke.id)) {
-        final outline = Paint()
-          ..color = Colors.blueAccent.withValues(alpha: .55)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 3;
-        canvas.drawRect(stroke.bounds.inflate(6), outline);
-      }
     }
     for (final text in document.texts) {
       final painter = TextPainter(
@@ -991,6 +984,28 @@ class _CanvasPainter extends CustomPainter {
       painter.paint(canvas, Offset(text.x, text.y));
     }
     if (activeStroke != null) _drawStroke(canvas, activeStroke!);
+    final selectedRects = <Rect>[
+      ...document.strokes.where((s) => selectedIds.contains(s.id)).map((s) => s.bounds),
+      ...document.texts.where((t) => selectedIds.contains(t.id)).map((t) => t.bounds),
+    ];
+    if (selectedRects.isNotEmpty) {
+      var selection = selectedRects.first;
+      for (final rect in selectedRects.skip(1)) {
+        selection = selection.expandToInclude(rect);
+      }
+      final box = selection.inflate(10);
+      final outline = Paint()
+        ..color = Colors.blueAccent.withValues(alpha: .85)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.5;
+      canvas.drawRect(box, outline);
+      final handle = Paint()..color = Colors.blueAccent;
+      canvas.drawCircle(box.topLeft, 5, handle);
+      canvas.drawCircle(box.topRight, 5, handle);
+      canvas.drawCircle(box.bottomLeft, 5, handle);
+      canvas.drawCircle(box.bottomRight, 5, handle);
+    }
+
     if (lassoPoints.length >= 2) {
       final path = Path()..moveTo(lassoPoints.first.dx, lassoPoints.first.dy);
       for (final p in lassoPoints.skip(1)) { path.lineTo(p.dx, p.dy); }
