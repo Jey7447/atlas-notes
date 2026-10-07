@@ -468,7 +468,7 @@ class _CanvasEditorPageState extends State<CanvasEditorPage> {
     final scale = _transformController.value.getMaxScaleOnAxis();
     if (scale == 0) return;
     final factor = next / scale;
-    _transformController.value = _transformController.value.clone()..scale(factor);
+    _transformController.value = _transformController.value.clone()..scaleByDouble(factor, factor, factor, 1);
     setState(() => _zoom = next);
   }
 
