@@ -222,7 +222,7 @@ QueryExecutor _openConnection() {
     name: 'atlas_notes',
     web: DriftWebOptions(
       sqlite3Wasm: Uri.parse('sqlite3.wasm'),
-      driftWorker: Uri.parse('drift_worker.dart.js'),
+      driftWorker: Uri.parse('drift_worker.js'),
     ),
   );
 }
